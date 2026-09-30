@@ -1,0 +1,87 @@
+Fresh venv; installed wheel with --no-deps --no-index; cwd=/tmp (outside source tree)
+crowdb-tpc-loader 0.1.0rc1
+usage: crowdb-tpc-loader [-h] [--version] {generate,load} ...
+
+Generate TPC-H/TPC-DS Parquet and safely load durable Iceberg tables.
+
+positional arguments:
+  {generate,load}
+    generate       Generate and validate a complete persistent Parquet dataset
+    load           Generate, upload, verify and register a complete dataset
+
+options:
+  -h, --help       show this help message and exit
+  --version        show program's version number and exit
+usage: crowdb-tpc-loader generate [-h] --benchmark {tpch,tpcds} [--sf SF]
+                                  [--report-file REPORT_FILE]
+                                  [--tpchgen TPCHGEN] [--no-download]
+                                  [--memory-limit MEMORY_LIMIT]
+                                  [--threads THREADS] [--timeout TIMEOUT]
+                                  [--quiet] [--json] --output-dir OUTPUT_DIR
+
+options:
+  -h, --help            show this help message and exit
+  --benchmark {tpch,tpcds}
+  --sf SF               positive scale factor (default: 1)
+  --report-file REPORT_FILE
+                        also save the JSON report at a new path
+  --tpchgen TPCHGEN     prebuilt tpchgen-cli 3.x executable (otherwise
+                        PATH/cache/PyPI wheel)
+  --no-download         forbid generator binary/extension downloads
+  --memory-limit MEMORY_LIMIT
+                        DuckDB native memory limit, e.g. 1GB or 512MB
+  --threads THREADS     native generator threads (default: 2)
+  --timeout TIMEOUT     network/preflight timeout in seconds, NOT total
+                        generation time
+  --quiet               suppress progress (summary/errors remain)
+  --json                print the final run report as JSON on stdout
+  --output-dir OUTPUT_DIR
+                        new or empty persistent directory
+usage: crowdb-tpc-loader load [-h] --benchmark {tpch,tpcds} [--sf SF]
+                              [--report-file REPORT_FILE] [--tpchgen TPCHGEN]
+                              [--no-download] [--memory-limit MEMORY_LIMIT]
+                              [--threads THREADS] [--timeout TIMEOUT]
+                              [--quiet] [--json] [--catalog-uri CATALOG_URI]
+                              [--token TOKEN] [--namespace NAMESPACE]
+                              [--on-exists {error,skip}] [--work-dir WORK_DIR]
+                              [--keep-files]
+                              [--upload-buffer-mib UPLOAD_BUFFER_MIB]
+                              [--catalog-property KEY=VALUE]
+                              [--py-io-impl PY_IO_IMPL]
+
+options:
+  -h, --help            show this help message and exit
+  --benchmark {tpch,tpcds}
+  --sf SF               positive scale factor (default: 1)
+  --report-file REPORT_FILE
+                        also save the JSON report at a new path
+  --tpchgen TPCHGEN     prebuilt tpchgen-cli 3.x executable (otherwise
+                        PATH/cache/PyPI wheel)
+  --no-download         forbid generator binary/extension downloads
+  --memory-limit MEMORY_LIMIT
+                        DuckDB native memory limit, e.g. 1GB or 512MB
+  --threads THREADS     native generator threads (default: 2)
+  --timeout TIMEOUT     network/preflight timeout in seconds, NOT total
+                        generation time
+  --quiet               suppress progress (summary/errors remain)
+  --json                print the final run report as JSON on stdout
+  --catalog-uri CATALOG_URI
+                        REST Catalog base URI; overrides ICEBERG_URI
+  --token TOKEN         Catalog authentication token; prefer ICEBERG_TOKEN to
+                        avoid shell/process exposure
+  --namespace NAMESPACE
+                        namespace (default: benchmark); dots separate
+                        namespace levels
+  --on-exists {error,skip}
+  --work-dir WORK_DIR   staging PARENT; a unique child is created, never erase
+                        this parent
+  --keep-files          retain local Parquet after a successful load
+  --upload-buffer-mib UPLOAD_BUFFER_MIB
+                        single-upload copy/checksum buffer, 1–64 MiB (default:
+                        8)
+  --catalog-property KEY=VALUE
+                        advanced PyIceberg FileIO/catalog property; repeatable
+  --py-io-impl PY_IO_IMPL
+                        deployment-specific Python FileIO implementation class
+crowdb-tpc-loader 0.1.0rc1
+Installed module: /mnt/data/crowdb-wheel-check/lib/python3.13/site-packages/crowdb_tpc_loader/__init__.py

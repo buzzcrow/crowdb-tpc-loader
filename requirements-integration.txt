@@ -1,0 +1,11 @@
+# Candidate reproducibility matrix, NOT an already-tested dependency lock.
+# Install with --only-binary=:all: and run the real integration suite.
+pyarrow==22.0.0
+pyiceberg[pyarrow]==0.10.0
+duckdb==1.5.6
+packaging==25.0
+sqlalchemy==2.0.43
+pytest==8.4.2
+pytest-cov==6.2.1
+# Optional: use the loader's binary-only bootstrap instead of installing this.
+# tpchgen-cli==3.0.0

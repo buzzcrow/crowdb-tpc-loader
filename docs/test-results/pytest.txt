@@ -1,0 +1,38 @@
+ssssss.................................................................. [ 39%]
+........................................................................ [ 79%]
+......................................                                   [100%]
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.13.5-final-0 ________________
+
+Name                                           Stmts   Miss  Cover   Missing
+----------------------------------------------------------------------------
+src/crowdb_tpc_loader/__init__.py                  1      0   100%
+src/crowdb_tpc_loader/__main__.py                  2      2     0%   1-3
+src/crowdb_tpc_loader/arrow_http_bridge.py        56     56     0%   6-85
+src/crowdb_tpc_loader/backend.py                 166    111    33%   38-39, 42-45, 61, 71-85, 90-91, 94-112, 115-122, 125-132, 135, 139-155, 163-168, 171-192, 196-201, 204-208, 211-214, 217-219, 225-227
+src/crowdb_tpc_loader/cli.py                     189     57    70%   63, 117, 140, 158, 169-193, 197-232
+src/crowdb_tpc_loader/errors.py                   18      0   100%
+src/crowdb_tpc_loader/generators/__init__.py      10      5    50%   11-15
+src/crowdb_tpc_loader/generators/binary.py       136     70    49%   31-33, 40-41, 49-50, 66-75, 85, 106-107, 111-158, 166-169
+src/crowdb_tpc_loader/generators/tpcds.py         88      8    91%   30-31, 59, 62, 77-79, 88
+src/crowdb_tpc_loader/generators/tpch.py         104     63    39%   45-46, 54-58, 61-80, 83-126, 129
+src/crowdb_tpc_loader/http_fileio.py             235     42    82%   32, 46, 75-76, 83-85, 98, 101, 104-105, 116, 126-128, 137, 151, 172, 178-180, 188, 192, 203, 240, 262-267, 270-275, 280, 285, 290-291, 294
+src/crowdb_tpc_loader/loader.py                  117      5    96%   21, 58, 64-65, 107
+src/crowdb_tpc_loader/models.py                   54      0   100%
+src/crowdb_tpc_loader/report.py                   71      0   100%
+src/crowdb_tpc_loader/rest_catalog.py             26      7    73%   39-48
+src/crowdb_tpc_loader/runner.py                  161     14    91%   49, 108, 155-160, 165, 167-168, 179-180, 191-193
+src/crowdb_tpc_loader/schemas.py                  24     11    54%   169-181
+src/crowdb_tpc_loader/security.py                 69     11    84%   25-26, 87-95
+src/crowdb_tpc_loader/transfers.py                69     31    55%   27-28, 56-90
+src/crowdb_tpc_loader/util.py                    154     13    92%   26-27, 32, 55-56, 73-74, 101-102, 114, 169, 191, 208
+src/crowdb_tpc_loader/validation.py              119     14    88%   15-20, 82, 86, 88, 135-136, 139, 142, 152
+----------------------------------------------------------------------------
+TOTAL                                           1869    520    72%
+Coverage JSON written to file docs/test-results/coverage.json
+=========================== short test summary info ============================
+SKIPPED [1] tests/integration/test_iceberg_http.py:12: could not import 'pyarrow': No module named 'pyarrow'
+SKIPPED [1] tests/integration/test_parquet.py:6: could not import 'pyarrow': No module named 'pyarrow'
+SKIPPED [2] tests/integration/test_crowdb.py:21: requires CROWDB_TPC_CROWDB_TESTS=1 and CROWDB_TPC_SF1_TESTS=1; creates fresh remote tables
+SKIPPED [4] tests/integration/test_generators.py:21: set CROWDB_TPC_GENERATOR_TESTS=1 to invoke real native generators
+176 passed, 8 skipped in 2.00s
