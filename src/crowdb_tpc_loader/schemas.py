@@ -3,7 +3,6 @@
 I = signed 32/64-bit benchmark INTEGER/identifier (width is preserved, never cast).
 L = signed int64; S = Arrow string/large_string; D = date32.
 D<p>_<s> = exact decimal precision and scale. CHAR/VARCHAR are represented as UTF-8.
-TPC-DS deliberately preserves the standard `s_tax_precentage` spelling.
 """
 from __future__ import annotations
 
@@ -101,7 +100,7 @@ TPCDS: dict[str, tuple[Column, ...]] = {
         s_number_employees:I s_floor_space:I s_hours:S s_manager:S s_market_id:I s_geography_class:S
         s_market_desc:S s_market_manager:S s_division_id:I s_division_name:S s_company_id:I
         s_company_name:S s_street_number:S s_street_name:S s_street_type:S s_suite_number:S
-        s_city:S s_county:S s_state:S s_zip:S s_country:S s_gmt_offset:D5_2 s_tax_precentage:D5_2
+        s_city:S s_county:S s_state:S s_zip:S s_country:S s_gmt_offset:D5_2 s_tax_percentage:D5_2
     """),
     "store_returns": columns("""
         sr_returned_date_sk:I sr_return_time_sk:I sr_item_sk:I sr_customer_sk:I sr_cdemo_sk:I

@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 import sys
 
-from crowdb_tpc_loader.backend import inspect_inventory
+from crowdb_tpc_loader.backend import CROWDB_FILE_IO, inspect_inventory
 from crowdb_tpc_loader.cli import SafeParser, initial_redactor, positive_timeout
 from crowdb_tpc_loader.loader import verify_inventory
 from crowdb_tpc_loader.rest_catalog import create_catalog
@@ -59,7 +59,7 @@ def main(argv=None) -> int:
             raise ValueError("This report contains no successfully loaded tables to verify")
         if args.require_complete and set(selected) != set(definitions):
             raise ValueError("The report does not contain a complete new 8/24-table load; skipped/failed tables are not equivalent")
-        properties = {"uri":uri, "http.timeout":str(args.timeout)}
+        properties = {"uri":uri, "http.timeout":str(args.timeout), "py-io-impl": CROWDB_FILE_IO}
         if args.token:
             properties["token"] = args.token
         for entry in args.catalog_property:

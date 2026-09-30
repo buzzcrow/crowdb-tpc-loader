@@ -14,6 +14,8 @@ from .models import Options, TableData
 from .security import Redactor
 from .util import remote_uri
 
+CROWDB_FILE_IO = "crowdb_tpc_loader.crowdb_fileio.CrowdbFileIO"
+
 
 @dataclass(frozen=True)
 class RemotePart:
@@ -89,6 +91,7 @@ class IcebergBackend:
     def __init__(self, options: Options, redactor: Redactor):
         self.options, self.redactor = options, redactor
         self.catalog: Any = None
+        self.probe_cleanup_supported = True
 
     def connect(self) -> None:
         try:
@@ -97,12 +100,14 @@ class IcebergBackend:
             version = importlib.metadata.version("pyiceberg")
             if not Version("0.10") <= Version(version) < Version("0.11"):
                 raise CompatibilityError(f"PyIceberg {version} is outside this release's 0.10.x adapter range")
-            properties = dict(self.options.catalog_properties)
+            properties = {"py-io-impl": CROWDB_FILE_IO}
+            properties.update(self.options.catalog_properties)
             properties.update({"uri": self.options.catalog_uri, "http.timeout": str(self.options.timeout)})
             if self.options.token is not None:
                 properties["token"] = self.options.token
             self.redactor.learn(properties)
             self.catalog = create_catalog("crowdb_tpc_loader", self.options.timeout, properties)
+            self.probe_cleanup_supported = self.catalog.properties.get("py-io-impl") != CROWDB_FILE_IO
             self.redactor.learn(self.catalog.properties)
         except CompatibilityError:
             raise

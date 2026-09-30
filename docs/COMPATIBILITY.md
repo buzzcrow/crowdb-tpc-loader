@@ -1,28 +1,28 @@
 # Compatibility boundaries and deployment configuration
 
-## Version ranges: targets, not a completed test matrix
+## Version ranges and observed local run
 
-| Component | Constraint or choice for this candidate release | Verification in the current delivery environment |
+| Component | Constraint or choice | Local verification on 2026-09-30 |
 |---|---|---|
-| Python | `>=3.10` | Ran on 3.13.5; CI is configured for 3.10, 3.12, and 3.13, but was not run locally |
-| PyArrow | `>=18,<24` | Not installed; real Parquet integration tests skipped |
-| PyIceberg | `>=0.10,<0.11` | Not installed; real Catalog/metadata adaptation unverified |
-| DuckDB | `>=1.4,<1.6` | Not installed; real TPC-DS data not generated |
-| tpchgen-cli | Built-in downloader pins `3.0.0`; explicitly supplied executables may be `3.x` | Actual binary not obtained; command construction, version rejection, download verification, and cache logic have unit tests |
-| CrowDB | Requires REST Catalog, `stage-create`, and readable/writable remote FileIO | No connection to a real deployment; compatibility with the current CrowDB version cannot be claimed |
+| Python | `>=3.10` | Ran on 3.12.3 |
+| PyArrow | `>=18,<24` | 23.0.1, local TPC load/read passed |
+| PyIceberg | `>=0.10,<0.11` | 0.10.0, local TPC load/read passed |
+| DuckDB | `>=1.4,<1.6` | 1.5.6, SF 0.01 TPC-DS generated |
+| tpchgen-cli | Built-in downloader pins `3.0.0`; explicitly supplied executables may be `3.x` | 3.0.0, SF 0.01 TPC-H generated |
+| CROWDB | Requires REST Catalog and readable/writable remote FileIO | Local version 0.2.0 single-node image passed SF 0.01 load/read |
 
-`requirements-integration.txt` provides **pinned versions awaiting validation** for local reproduction, not "tested requirements." Reports record dependency versions for each run. An automatically downloaded tpchgen binary may not be an installed Python distribution, so `dependencies.tpchgen-cli` may say `not installed` while `generator.version` still records the actual binary version and source.
+`requirements-integration.txt` provides pinned versions for reproduction; the versions actually used are in each run report. Reports record dependency versions for each run. An automatically downloaded tpchgen binary may not be an installed Python distribution, so `dependencies.tpchgen-cli` may say `not installed` while `generator.version` still records the actual binary version and source.
 
 DuckDB is constrained to 1.4/1.5 to avoid mixing TPC-DS generator changes from 2.x into the same data baseline. The extension version and source and the DuckDB build are also recorded. Pinned versions do not replace data validation: any change to column types is an error; DECIMAL precision is not relaxed and date types are not changed automatically.
 
-## Catalog and staged preflight
+## Catalog and preflight
 
 PyIceberg adaptation is concentrated in `backend.py` and `rest_catalog.py`. Two extension points require particular regression attention:
 
 - `CreateTableTransaction._table`: obtains a valid location and FileIO for an uncommitted table. This object never enters the transaction commit context.
 - `RestCatalog._create_session`: sets a bounded request timeout on the Catalog's own session, preserves authentication/signing adapters, and disables transport retries and HTTP redirects. It does not modify global requests or assume an unsupported `rest.timeout` option takes effect.
 
-At runtime, load explicitly rejects PyIceberg versions outside 0.10.x. It also fails clearly if the class/method disappears or the server does not support `stage-create`. Do not remove the version check to claim compatibility; first run real integration tests and inspect the upstream API.
+At runtime, load explicitly rejects PyIceberg versions outside 0.10.x. Custom FileIO paths still use staged preflight and require `stage-create`. The native CrowDB FileIO skips the write probe because the native endpoint has no file DELETE; the first real table performs upload verification.
 
 REST preflight may create a missing namespace. It does not publish benchmark tables before generating data. Whether the server retains uncommitted metadata from `stage-create` depends on the server implementation; this tool does not guess or delete internal server directories.
 
@@ -30,7 +30,7 @@ The table property `commit.retry.num-retries=0` is set, and the application call
 
 ## FileIO selection
 
-Prefer the storage URI, vended credentials, table properties, and FileIO returned by the Catalog. Do not treat paths inside a Docker container as client-writable paths.
+The default loader FileIO is `crowdb_tpc_loader.crowdb_fileio.CrowdbFileIO`, which uses exact-object opens for existence and length and otherwise uses PyArrow streaming S3 reads and writes. It works with the local native CrowDB Iceberg endpoint without `ListObjectsV2`. Other deployments may select their own FileIO with `--py-io-impl`. Honor catalog-provided storage URI and vended credentials; do not treat paths inside a Docker container as client-writable paths.
 
 Example of advanced parameters:
 
@@ -76,7 +76,7 @@ crowdb-tpc-loader load --benchmark tpch --namespace tpch_http_test \
   --catalog-property http.auth-origins=https://storage.example:443
 ```
 
-Using local port 80 for both Catalog and FileIO does not prove that this HTTP protocol is supported. Existing CrowDB data URIs may use another scheme or a dedicated FileIO. If preflight fails, keep the complete redacted report and correct the deployment endpoint or FileIO configuration; do not bypass preflight by registering local files.
+This optional HTTP adapter is separate from the native CrowDB adapter. The local CrowDB Iceberg endpoint uses S3-shaped object requests and does not support file DELETE or general bucket listing. Do not use the HTTP adapter for that endpoint.
 
 ## Native generators and resources
 
@@ -88,7 +88,7 @@ TPC-H cardinality baselines follow standard table cardinalities; SF1 lineitem ha
 
 ## Upstream references
 
-The CrowDB guide URL cited in the design remains in the original design document. Its contents could not be read for this delivery, so it cannot be treated as a verified server API contract.
+The local single-node run and independent verifier are recorded in [TEST_REPORT.md](TEST_REPORT.md). They do not establish SF 1 or distributed-deployment behavior.
 
 - [PyIceberg Add Files](https://py.iceberg.apache.org/api/#adding-files)
 - [PyIceberg FileIO interface](https://py.iceberg.apache.org/reference/pyiceberg/io/)

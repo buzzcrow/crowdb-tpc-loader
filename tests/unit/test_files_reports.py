@@ -1,6 +1,5 @@
 from decimal import Decimal
 from types import SimpleNamespace
-from pathlib import Path
 import hashlib
 import io
 import json
@@ -10,7 +9,6 @@ import pytest
 
 from crowdb_tpc_loader import util
 from crowdb_tpc_loader.errors import ArgumentError, CompatibilityError, ResourceError, ValidationError
-from crowdb_tpc_loader.report import atomic_json
 from crowdb_tpc_loader.schemas import TPCH, TPCDS, inventory
 from crowdb_tpc_loader.validation import discover_parts, identify_table, validate_tpch_counts
 
@@ -28,7 +26,7 @@ def test_explicit_inventory_column_counts(benchmark, counts):
     for columns in actual.values():
         assert len({c.name for c in columns}) == len(columns)
         assert {c.kind for c in columns} <= {"I","L","S","D","D15_2","D7_2","D5_2"}
-    assert "s_tax_precentage" in [c.name for c in TPCDS["store"]]
+    assert "s_tax_percentage" in [c.name for c in TPCDS["store"]]
 
 
 def test_unknown_benchmark():

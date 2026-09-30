@@ -123,7 +123,10 @@ class Runner:
                     if callable(getattr(backend, "set_staging", None)):
                         backend.set_staging(scratch)
                     backend.ensure_namespace()
-                    self.prober(backend, scratch, report, options.upload_buffer_mib * 1024 ** 2, self.emit)
+                    if getattr(backend, "probe_cleanup_supported", True):
+                        self.prober(backend, scratch, report, options.upload_buffer_mib * 1024 ** 2, self.emit)
+                    else:
+                        self.emit("CrowDB FileIO: upload verification starts with the first table")
                 report.phase("generating")
                 output = self.work / "data"
                 generated = generator.generate(output, scratch)

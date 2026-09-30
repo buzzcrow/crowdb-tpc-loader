@@ -4,31 +4,31 @@ The original `design/design.md` is preserved as supplied. The table distinguishe
 
 | Design item | Implementation and behavior | Verification boundary |
 |---|---|---|
-| 8 TPC-H tables | `schemas.TPCH` + `generators/tpch.py`; native 3.x parquet subcommand and shard detection | Lists, arguments, and type decisions tested; real generator not run |
-| 24 TPC-DS tables | `schemas.TPCDS` + `generators/tpcds.py`; disk database, extension, dsdgen, and per-table COPY | Lists and control paths tested; real DuckDB not run |
+| 8 TPC-H tables | `schemas.TPCH` + `generators/tpch.py`; native 3.x parquet subcommand and shard detection | Lists, arguments, and type decisions tested; SF 0.01 generator and load passed locally |
+| 24 TPC-DS tables | `schemas.TPCDS` + `generators/tpcds.py`; disk database, extension, dsdgen, and per-table COPY | Lists and control paths tested; SF 0.01 generator and load passed locally |
 | pip installation and entry point | `pyproject.toml` / `project.scripts`; wheel and sdist | Build and dependency-free entry-point installation checked in this delivery; see TEST_REPORT |
-| No Rust build for tpchgen | `generators/binary.py`; compatible wheel, hash check, binary extraction only, no sdist fallback | Offline selection, cache, and verification tests; actual download not run due to network access |
+| No Rust build for tpchgen | `generators/binary.py`; compatible wheel, hash check, binary extraction only, no sdist fallback | Offline selection, cache, and verification tests; 3.0.0 binary obtained from a verified wheel and run locally |
 | Argument, URI, and token precedence | `cli.py`; CLI overrides environment, redaction, argument validation | Unit tests |
-| Complete Parquet/schema validation | `validation.py`; complete table list, every footer, types, and consistency across shards | Decision logic tested; real format tests currently skipped |
-| Upload to persistent FileIO | `transfers.py` + `backend.data_location`; rejects local/file/memory and credential-bearing URIs | Real byte-stream and HTTP tests; no real CrowDB connection |
+| Complete Parquet/schema validation | `validation.py`; complete table list, every footer, types, and consistency across shards | Decision logic tested; real PyArrow tests and remote SF 0.01 passed |
+| Upload to persistent FileIO | `transfers.py` + `backend.data_location`; rejects local/file/memory and credential-bearing URIs | Real byte-stream and HTTP tests; native CrowDB SF 0.01 upload passed |
 | Post-upload verification | Size, full-file SHA-256 readback, footer, and import conversion preflight | Fault injection and byte-stream tests |
-| `add_files` and snapshot verification | `loader.py` + `backend.py`; no `add_files` retry; verifies live manifest file set, row counts, and sizes | Fault injection tests; real PyIceberg tests currently skipped |
+| `add_files` and snapshot verification | `loader.py` + `backend.py`; no `add_files` retry; verifies live manifest file set, row counts, and sizes | Fault injection tests; native CrowDB SF 0.01 and independent reads passed |
 | Empty Parquet files | Validation requires them; manifest enumeration includes zero-row files without relying on data scan filtering | Decision tests; real integration test pending |
 | Existing-table `error`/`skip` | `list_tables` first; `error` stops early, all-skipped runs return early; handles concurrent table creation | Unit tests |
 | Partial failure | Stops per table; does not roll back successful tables; preserves incomplete-table state | Unit tests |
 | Uncertain commit result | Three read-only verification rounds; separates `registered`, `uploaded_unregistered`, and `commit_unknown` | Fault injection for post-success timeout, missing commit, lost connection, and explicit rejection |
 | Working directory and report | Unique subdirectory, ownership marker, lock, atomic JSON, cleanup on success and retention on failure | Unit tests |
 | Resource limits | Heuristic local-space check, native generation, disk spill, serial bounded copying | Stream-size, directory, and space tests; peak memory at large SF not measured |
-| Independent client read | `scripts/verify_crowdb.py`; reconnects, checks remote footers, batch reads, and PyIceberg scan | Script included; real CrowDB acceptance not run |
+| Independent client read | `scripts/verify_crowdb.py`; reconnects, checks remote footers, batch reads, and PyIceberg scan | all 32 local single-node tables independently verified |
 | PyPI publication | Metadata and build artifacts prepared | Not published; package-name availability not checked |
 
 ## Deliberate implementation choices
 
 **Working directory behavior.** `--work-dir` is a parent directory in which a unique subdirectory is created. Cleanup after success therefore does not remove existing user files. The generate command's output directory belongs to the user and is not deleted.
 
-**Preflight.** Use the uncommitted table location and FileIO returned by server-side `stage-create`. Do not publish a probe table or guess paths inside a container. This adds a requirement for `stage-create` support beyond the original design. If unsupported, the tool fails without violating the design's table-creation order.
+**Preflight.** The native CrowDB FileIO cannot delete a probe object, so the loader verifies the first real upload instead of leaving an orphan. Custom FileIO paths retain the staged-table probe and require `stage-create`. No path inside a container is guessed.
 
-**Validation scope.** The first release accepts generator files only when column names and types match the manifest and Parquet field IDs are absent. Integers may be 32 or 64 bits, and their actual width is retained. TPC-DS ticket/order numbers requiring 64 bits are not narrowed. DECIMAL values must match exactly and are not converted to floating point. The standard spelling `store.s_tax_precentage` is retained.
+**Validation scope.** The first release accepts generator files only when column names and types match the manifest and Parquet field IDs are absent. Integers may be 32 or 64 bits, and their actual width is retained. TPC-DS ticket/order numbers requiring 64 bits are not narrowed. DECIMAL values must match exactly and are not converted to floating point. The standard spelling `store.s_tax_percentage` is retained.
 
 **Strong upload verification.** A full-object SHA-256 readback adds network I/O. Filenames and footers establish structure but do not prove that the file body was transferred intact, so both checks are used.
 
@@ -36,7 +36,7 @@ The original `design/design.md` is preserved as supplied. The table distinguishe
 
 **Run reports.** Tokens, keys, and signed URLs are not written to JSON; userinfo, query, and fragment are removed from URLs. Reports record the run ID, actual versions, native arguments, schemas, row counts, byte counts, remote URIs, checksums, table UUIDs, snapshot IDs, and commit states.
 
-**HTTP adapter.** This is an additional optional implementation, not a claim about CrowDB's actual protocol. It is used only when explicitly selected and preflight succeeds. It supports bounded range reads, disk-spooled writes, and a read-only Arrow scan bridge.
+**FileIO adapters.** `crowdb_fileio.py` is the default native CrowDB adapter. It uses exact-object opens for existence and length, bypassing PyArrow's S3 file-info listing. The separate optional HTTP adapter remains available only when explicitly selected and preflight succeeds; it supports bounded range reads, disk-spooled writes, and a read-only Arrow scan bridge.
 
 ## Unsupported capabilities
 

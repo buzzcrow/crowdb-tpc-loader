@@ -1,11 +1,10 @@
 from dataclasses import replace
-from pathlib import Path
 import json
 
 import pytest
 
 from crowdb_tpc_loader import loader
-from crowdb_tpc_loader.errors import CompatibilityError, GenerationError, ValidationError, ResourceError
+from crowdb_tpc_loader.errors import CompatibilityError, ValidationError, ResourceError
 from crowdb_tpc_loader.runner import Runner
 from crowdb_tpc_loader.schemas import inventory
 
@@ -38,6 +37,16 @@ def test_load_success_cleanup_parent_safe(options, redactor, fake_backend, fake_
     assert fake_backend.calls.index("probe") < fake_backend.calls.index("validate_dataset")
     assert fake_backend.calls.index("validate_dataset") < fake_backend.calls.index("create:region")
     assert "top-secret-credential" not in result.report_path.read_text()
+
+
+def test_native_fileio_does_not_leave_undeletable_probe(options, redactor, fake_backend,
+                                                       fake_generator_factory, make_data):
+    fake_backend.probe_cleanup_supported = False
+    runner = make_runner(options, redactor, fake_backend, fake_generator_factory, make_data)
+    result = runner.run()
+    assert result.exit_code == 0, result.report["errors"]
+    assert "probe" not in fake_backend.calls
+    assert fake_backend.calls.index("validate_dataset") < fake_backend.calls.index("create:region")
 
 
 def test_keep_files(options, redactor, fake_backend, fake_generator_factory, make_data):
