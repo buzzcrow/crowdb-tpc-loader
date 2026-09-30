@@ -126,7 +126,7 @@ class Runner:
                     if getattr(backend, "probe_cleanup_supported", True):
                         self.prober(backend, scratch, report, options.upload_buffer_mib * 1024 ** 2, self.emit)
                     else:
-                        self.emit("CrowDB FileIO: upload verification starts with the first table")
+                        self.emit("CrowDB FileIO: uploads start with the first table")
                 report.phase("generating")
                 output = self.work / "data"
                 generated = generator.generate(output, scratch)
@@ -141,7 +141,8 @@ class Runner:
                         row["status"] = "succeeded"
                 else:
                     report.phase("loading")
-                    self.table_loader(backend, tables, report, options.upload_buffer_mib * 1024 ** 2, self.emit)
+                    self.table_loader(backend, tables, report, options.upload_buffer_mib * 1024 ** 2,
+                                      self.emit, upload_workers=options.upload_workers)
                 generator.close()
                 generator = None
                 if not scratch.is_symlink():

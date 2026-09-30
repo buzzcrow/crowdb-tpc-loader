@@ -63,6 +63,7 @@ class Options:
     memory_limit: str = "1GB"
     threads: int = 2
     upload_buffer_mib: int = 8
+    upload_workers: int = 24
     timeout: float = 60.0
     catalog_properties: dict[str, str] = field(default_factory=dict, repr=False)
     quiet: bool = False

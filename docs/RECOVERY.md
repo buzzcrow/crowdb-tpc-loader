@@ -1,6 +1,6 @@
 # Failure recovery: determine commit status before handling files
 
-The tool does not provide automatic resume, overwrite, drop, purge, or remote garbage collection. A run commits one table at a time; there is no atomic transaction across all 8 or 24 tables. A failure does not roll back tables already committed successfully.
+The tool does not provide automatic resume, overwrite, drop, purge, or remote garbage collection. A run commits one table at a time; there is no atomic transaction across all 8 or 24 tables. With concurrent uploads, all table files are uploaded before the first table commit; an upload failure prevents all commits in that batch. A failure during ordered commits does not roll back tables already committed successfully.
 
 ## Reports and directories
 
@@ -12,7 +12,7 @@ Forced process termination, sudden power loss, and disk damage can still interru
 |---|---|---|
 | `local` | No target remote URI yet | A locally generated file; this does not imply upload |
 | `upload_started` | Target URI recorded; the object may be absent, partly uploaded, or complete | Check whether the object exists; do not infer its size from status alone |
-| `uploaded_unregistered` | Upload verified; commit not attempted, or explicitly rejected and verified unregistered | Check other snapshots and references before cleanup |
+| `uploaded_unregistered` | Upload accepted by the server; commit not attempted, or explicitly rejected and verified unregistered | Check other snapshots and references before cleanup |
 | `commit_unknown` | Commit started or may have started; result cannot be confirmed | Keep the file; do not blindly repeat `add_files` |
 | `registered` | URI observed in the verified current snapshot | Do not delete directly; follow the Iceberg snapshot and metadata lifecycle |
 

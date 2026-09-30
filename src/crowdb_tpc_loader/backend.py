@@ -228,5 +228,5 @@ class IcebergBackend:
     def definite_rejection(error: Exception) -> bool:
         # A transport failure / generic server exception is never assumed to be a rejected commit.
         from pyiceberg.exceptions import (BadRequestError, CommitFailedException,
-                                          ForbiddenError, NotAuthorizedError)
-        return isinstance(error, (BadRequestError, CommitFailedException, ForbiddenError, NotAuthorizedError))
+                                          ForbiddenError, UnauthorizedError)
+        return isinstance(error, (BadRequestError, CommitFailedException, ForbiddenError, UnauthorizedError))

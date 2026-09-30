@@ -1,4 +1,4 @@
-"""Bounded byte-for-byte durable uploads, probe checks and remote footer verification."""
+"""Bounded streaming uploads and FileIO probe checks."""
 from __future__ import annotations
 
 import time
@@ -9,14 +9,12 @@ from .backend import data_location
 from .errors import CompatibilityError, LoadError
 from .models import ParquetPart
 from .report import RunReport
-from .util import copy_stream, format_bytes, hash_stream, remote_uri
+from .util import copy_stream, format_bytes, remote_uri
 
 
 def upload_part(
     table: Any, part: ParquetPart, uri: str, buffer_size: int, emit: Callable[[str], None],
 ) -> str:
-    import pyarrow.parquet as pq
-
     remote_uri(uri)
     last_progress = time.monotonic()
 
@@ -28,26 +26,13 @@ def upload_part(
             last_progress = now
 
     output = table.io.new_output(uri)
-    if output.exists():
-        raise LoadError("Unique target data URI unexpectedly already exists; refusing to overwrite")
-    with part.path.open("rb") as source, output.create(overwrite=False) as target:
-        count, digest = copy_stream(source, target, buffer_size, progress)
+    try:
+        with part.path.open("rb") as source, output.create(overwrite=False) as target:
+            count, digest = copy_stream(source, target, buffer_size, progress)
+    except FileExistsError as exc:
+        raise LoadError("Unique target data URI unexpectedly already exists; refusing to overwrite") from exc
     if count != part.size_bytes:
         raise LoadError("Local Parquet file changed size after validation; uploaded object will not be registered")
-    remote = table.io.new_input(uri)
-    if len(remote) != part.size_bytes:
-        raise LoadError(f"Remote upload size mismatch for {part.path.name}")
-    # A full streaming checksum also catches corruption outside the Parquet footer.
-    emit(f"Verify upload {part.path.name}: size, streaming SHA-256 and Parquet footer")
-    with remote.open() as stream:
-        remote_count, remote_digest = hash_stream(stream, buffer_size)
-    if remote_count != count or remote_digest != digest:
-        raise LoadError(f"Remote upload content checksum mismatch for {part.path.name}")
-    with remote.open() as stream:
-        footer = pq.read_metadata(stream)
-    schema = footer.schema.to_arrow_schema()
-    if footer.num_rows != part.rows or not schema.equals(part.schema, check_metadata=False):
-        raise LoadError(f"Remote Parquet row count/schema differs from the validated local part: {part.path.name}")
     return digest
 
 
@@ -66,7 +51,7 @@ def probe_fileio(backend: Any, scratch: Path, report: RunReport, buffer_size: in
     report.data["probes"].append(record)
     report.save()
     try:
-        emit("FileIO preflight: write/read/checksum/footer/import-conversion probe (no table commit)")
+        emit("FileIO preflight: write/import-conversion probe (no table commit)")
         upload_part(probe_table, part, uri, buffer_size, emit)
         backend.validate_import(probe_table, [uri])
         record["state"] = "verified"

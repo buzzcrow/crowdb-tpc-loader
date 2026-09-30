@@ -25,9 +25,11 @@ crowdb-tpc-loader load --benchmark tpcds --sf 0.01 \
   --namespace tpcds_demo --report-file ./tpcds-demo.json
 ```
 
-Each command generates and validates the whole benchmark dataset, creates its 8 or 24 unpartitioned Iceberg tables, uploads one or more Parquet files per table, verifies their bytes and footers, then registers them. Success removes local staging by default. The JSON report records table row counts, remote file locations, snapshots, and any failure. An existing target table makes `load` stop before generation; `--on-exists skip` skips it without verifying or repairing it.
+Each command generates and validates the whole benchmark dataset, creates its 8 or 24 unpartitioned Iceberg tables, uploads one or more Parquet files per table, then registers them in one snapshot commit per table. Local Parquet footers are validated before upload. The server checks each upload's signed payload or supplied checksum before accepting it, and PyIceberg reads remote footers during registration. The loader does not download uploaded files for a second checksum pass. Success removes local staging by default. The JSON report records table row counts, remote file locations, snapshots, and any failure. An existing target table makes `load` stop before generation; `--on-exists skip` skips it without verifying or repairing it.
 
-The bundled CrowDB FileIO handles exact-object metadata requests against the native Iceberg endpoint. It does not need S3 bucket listing. The native endpoint has no file DELETE, so `load` starts upload verification with the first real table instead of writing an orphaned preflight object. For another storage service, select its FileIO with `--py-io-impl`. The command reads the storage locations and credentials returned by the catalog; it never registers local file paths.
+The bundled CrowDB FileIO handles exact-object metadata requests against the native Iceberg endpoint. It does not need S3 bucket listing. The native endpoint has no file DELETE, so `load` starts uploading with the first real table instead of writing an orphaned preflight object. For another storage service, select its FileIO with `--py-io-impl`. The command reads the storage locations and credentials returned by the catalog; it never registers local file paths.
+
+With `--upload-workers 24` (the default), files from different tables can upload concurrently even when each table has only one Parquet file. Each table is committed once, in table order, after all uploads finish. `--upload-workers 1` retains sequential loading. If any upload fails, the concurrent batch is not committed; the report and local staging are kept for inspection. Copy buffers can use roughly `upload-workers × upload-buffer-mib` MiB.
 
 ## Read the imported tables
 
@@ -65,9 +67,9 @@ crowdb-tpc-loader generate --benchmark tpch --sf 0.01 --output-dir ./tpch-001
 crowdb-tpc-loader generate --benchmark tpcds --sf 0.01 --output-dir ./tpcds-001
 ```
 
-The output directory must be new or empty. Each run writes `data/` and `run-summary.json`. Defaults are SF 1, two generator threads, 1 GB DuckDB memory limit, an 8 MiB upload buffer, and a 60-second network timeout. These limits are configurable with `--sf`, `--threads`, `--memory-limit`, `--upload-buffer-mib`, and `--timeout`; the timeout is not a whole-run deadline.
+The output directory must be new or empty. Each run writes `data/` and `run-summary.json`. Defaults are SF 1, two generator threads, 1 GB DuckDB memory limit, an 8 MiB upload buffer, 24 upload workers for `load`, and a 60-second network timeout. These limits are configurable with `--sf`, `--threads`, `--memory-limit`, `--upload-buffer-mib`, `--upload-workers`, and `--timeout`; the timeout is not a whole-run deadline.
 
-A load commits tables one at a time. A later failure leaves earlier committed tables intact and retains the local staging directory for investigation. See [recovery](docs/RECOVERY.md), [compatibility](docs/COMPATIBILITY.md), and the [test record](docs/TEST_REPORT.md) for detail. SF 0.01 has been exercised against a local single-node CROWDB container; SF 1 and distributed deployments still need separate acceptance.
+A load commits tables one at a time. A later commit failure leaves earlier committed tables intact and retains the local staging directory for investigation. See [recovery](docs/RECOVERY.md), [compatibility](docs/COMPATIBILITY.md), and the [test record](docs/TEST_REPORT.md) for detail. TPC-H and TPC-DS through SF 10 have been exercised against a local single-node CROWDB container, including spot DuckDB Iceberg queries; distributed deployments still need separate acceptance.
 
 ## Develop
 

@@ -11,14 +11,14 @@ The original `design/design.md` is preserved as supplied. The table distinguishe
 | Argument, URI, and token precedence | `cli.py`; CLI overrides environment, redaction, argument validation | Unit tests |
 | Complete Parquet/schema validation | `validation.py`; complete table list, every footer, types, and consistency across shards | Decision logic tested; real PyArrow tests and remote SF 0.01 passed |
 | Upload to persistent FileIO | `transfers.py` + `backend.data_location`; rejects local/file/memory and credential-bearing URIs | Real byte-stream and HTTP tests; native CrowDB SF 0.01 upload passed |
-| Post-upload verification | Size, full-file SHA-256 readback, footer, and import conversion preflight | Fault injection and byte-stream tests |
+| Upload integrity | Local size and SHA-256 are recorded; CROWDB validates the supplied signed payload/checksum before accepting upload; no full-object loader readback | Byte-stream and real CROWDB tests |
 | `add_files` and snapshot verification | `loader.py` + `backend.py`; no `add_files` retry; verifies live manifest file set, row counts, and sizes | Fault injection tests; native CrowDB SF 0.01 and independent reads passed |
 | Empty Parquet files | Validation requires them; manifest enumeration includes zero-row files without relying on data scan filtering | Decision tests; real integration test pending |
 | Existing-table `error`/`skip` | `list_tables` first; `error` stops early, all-skipped runs return early; handles concurrent table creation | Unit tests |
-| Partial failure | Stops per table; does not roll back successful tables; preserves incomplete-table state | Unit tests |
+| Partial failure | Sequential mode stops per table; concurrent mode completes the upload batch before ordered commits and skips all commits if any upload fails | Unit tests |
 | Uncertain commit result | Three read-only verification rounds; separates `registered`, `uploaded_unregistered`, and `commit_unknown` | Fault injection for post-success timeout, missing commit, lost connection, and explicit rejection |
 | Working directory and report | Unique subdirectory, ownership marker, lock, atomic JSON, cleanup on success and retention on failure | Unit tests |
-| Resource limits | Heuristic local-space check, native generation, disk spill, serial bounded copying | Stream-size, directory, and space tests; peak memory at large SF not measured |
+| Resource limits | Heuristic local-space check, native generation, disk spill, bounded copy buffers and up to 24 concurrent uploads | Stream-size, directory, and space tests; peak memory at large SF not measured |
 | Independent client read | `scripts/verify_crowdb.py`; reconnects, checks remote footers, batch reads, and PyIceberg scan | all 32 local single-node tables independently verified |
 | PyPI publication | Metadata and build artifacts prepared | Not published; package-name availability not checked |
 
@@ -30,7 +30,7 @@ The original `design/design.md` is preserved as supplied. The table distinguishe
 
 **Validation scope.** The first release accepts generator files only when column names and types match the manifest and Parquet field IDs are absent. Integers may be 32 or 64 bits, and their actual width is retained. TPC-DS ticket/order numbers requiring 64 bits are not narrowed. DECIMAL values must match exactly and are not converted to floating point. The standard spelling `store.s_tax_percentage` is retained.
 
-**Strong upload verification.** A full-object SHA-256 readback adds network I/O. Filenames and footers establish structure but do not prove that the file body was transferred intact, so both checks are used.
+**Upload integrity.** CROWDB requires a signed payload digest, declared checksum, or Content-MD5 for each PUT or multipart part, and rejects a mismatch before accepting it. The loader trusts an accepted upload and does not read the object back. Its local SHA-256 in the report identifies the staged source file; it is not a claim that the server compared this exact digest. PyIceberg reads remote footers when registering files.
 
 **Unregistered objects.** The tool does not automatically clean up uploaded benchmark objects or empty tables left after failure. Historical snapshots, branches, or delayed commits may still reference a file absent from the current snapshot. Reports provide evidence for manual inspection, not authorization for automatic deletion.
 

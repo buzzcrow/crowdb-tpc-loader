@@ -15,8 +15,9 @@ def make_runner(options, redactor, fake_backend, fake_generator_factory, make_da
         return make_data(inventory(benchmark), root=output)
     def probe(backend, *args):
         backend.calls.append("probe")
-    def table_loader(backend, tables, report, buffer, emit):
-        return loader.load_tables(backend, tables, report, buffer, emit, uploader=lambda *args: "digest")
+    def table_loader(backend, tables, report, buffer, emit, upload_workers=1):
+        return loader.load_tables(backend, tables, report, buffer, emit,
+                                  uploader=lambda *args: "digest", upload_workers=upload_workers)
     defaults = dict(generator_factory=fake_generator_factory, backend_factory=lambda *args: fake_backend,
                     validator=validator, prober=probe, table_loader=table_loader)
     defaults.update(kwargs)

@@ -1,9 +1,10 @@
 from types import SimpleNamespace
+from threading import Barrier
 
 import pytest
 
 from crowdb_tpc_loader import loader
-from crowdb_tpc_loader.backend import Inventory, RemotePart, inspect_inventory
+from crowdb_tpc_loader.backend import IcebergBackend, Inventory, RemotePart, inspect_inventory
 from crowdb_tpc_loader.errors import CommitUncertainError, LoadError
 
 
@@ -42,6 +43,15 @@ def test_success_journal_and_remote_uris(report, make_data, fake_backend, tmp_pa
         assert row["files"][0]["state"] == "registered"
         assert fake_backend.calls.count("register:" + name) == 1
     assert fake_backend.calls.index("register:region") < fake_backend.calls.index("create:nation")
+
+
+def test_pyiceberg_definite_rejections_match_installed_exception_types():
+    from pyiceberg.exceptions import BadRequestError, CommitFailedException, ForbiddenError, UnauthorizedError
+
+    for error in (BadRequestError("bad"), CommitFailedException("conflict"),
+                  ForbiddenError("forbidden"), UnauthorizedError("unauthorized")):
+        assert IcebergBackend.definite_rejection(error)
+    assert not IcebergBackend.definite_rejection(TimeoutError("unknown"))
 
 
 def test_timeout_after_commit_reconciles_no_retry(report, make_data, fake_backend, tmp_path):
@@ -114,6 +124,35 @@ def test_skip_never_uploads(report, make_data, fake_backend, tmp_path):
     run(report, data, fake_backend, lambda *args: pytest.fail("upload called for skipped table"))
     assert "create:region" not in fake_backend.calls
     assert report.table("nation")["status"] == "skipped"
+
+
+def test_parallel_uploads_finish_before_ordered_commits(report, make_data, fake_backend, tmp_path):
+    data = make_data(("region", "nation"))
+    seed(report, data, tmp_path)
+    overlap = Barrier(2)
+    def upload(table, part, uri, buffer, emit):
+        overlap.wait(timeout=5)
+        return "digest"
+    loader.load_tables(fake_backend, data, report, 1024, lambda message: None,
+                       uploader=upload, upload_workers=2)
+    assert fake_backend.calls.index("create:nation") < fake_backend.calls.index("register:region")
+    assert fake_backend.calls.index("register:region") < fake_backend.calls.index("register:nation")
+    assert all(report.table(name)["status"] == "succeeded" for name in data)
+
+
+def test_parallel_upload_failure_prevents_commits(report, make_data, fake_backend, tmp_path):
+    data = make_data(("region", "nation"))
+    seed(report, data, tmp_path)
+    def upload(table, part, uri, buffer, emit):
+        if table.name()[-1] == "nation":
+            raise OSError("upload rejected")
+        return "digest"
+    with pytest.raises(LoadError, match="nation"):
+        loader.load_tables(fake_backend, data, report, 1024, lambda message: None,
+                           uploader=upload, upload_workers=2)
+    assert not any(call.startswith("register:") for call in fake_backend.calls)
+    assert report.table("region")["files"][0]["state"] == "uploaded_unregistered"
+    assert report.table("nation")["files"][0]["state"] == "upload_started"
 
 
 @pytest.mark.parametrize("snapshot,files", [

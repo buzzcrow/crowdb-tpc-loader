@@ -96,6 +96,8 @@ def build_parser(redactor: Redactor) -> SafeParser:
             command.add_argument("--keep-files", action="store_true", help="retain local Parquet after a successful load")
             command.add_argument("--upload-buffer-mib", type=positive_int, default=8,
                                  help="single-upload copy/checksum buffer, 1–64 MiB (default: 8)")
+            command.add_argument("--upload-workers", type=positive_int, default=24,
+                                 help="maximum concurrent file uploads (default: 24)")
             command.add_argument("--catalog-property", action="append", default=[], metavar="KEY=VALUE",
                                  help="advanced PyIceberg FileIO/catalog property; repeatable")
             command.add_argument("--py-io-impl", help="deployment-specific Python FileIO implementation class")
@@ -131,6 +133,8 @@ def to_options(args: argparse.Namespace, redactor: Redactor) -> Options:
         raise ArgumentError("Namespace levels must contain 1–255 letters, numbers, underscores or hyphens; separate levels with dots")
     if args.upload_buffer_mib > 64:
         raise ArgumentError("--upload-buffer-mib must be between 1 and 64")
+    if args.upload_workers > 24:
+        raise ArgumentError("--upload-workers must be between 1 and 24")
     properties = {}
     for entry in args.catalog_property:
         if "=" not in entry:
@@ -146,7 +150,8 @@ def to_options(args: argparse.Namespace, redactor: Redactor) -> Options:
     redactor.learn(properties)
     return Options(**common, catalog_uri=uri.rstrip("/"), token=token, namespace=namespace,
                    on_exists=args.on_exists, work_dir=args.work_dir, keep_files=args.keep_files,
-                   upload_buffer_mib=args.upload_buffer_mib, catalog_properties=properties)
+                   upload_buffer_mib=args.upload_buffer_mib, upload_workers=args.upload_workers,
+                   catalog_properties=properties)
 
 
 def initial_redactor(argv: list[str]) -> Redactor:

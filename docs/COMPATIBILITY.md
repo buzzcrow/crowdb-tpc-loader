@@ -88,7 +88,7 @@ TPC-H cardinality baselines follow standard table cardinalities; SF1 lineitem ha
 
 ## Upstream references
 
-The local single-node run and independent verifier are recorded in [TEST_REPORT.md](TEST_REPORT.md). They do not establish SF 1 or distributed-deployment behavior.
+The local single-node runs and independent verifier are recorded in [TEST_REPORT.md](TEST_REPORT.md). They do not establish distributed-deployment behavior.
 
 - [PyIceberg Add Files](https://py.iceberg.apache.org/api/#adding-files)
 - [PyIceberg FileIO interface](https://py.iceberg.apache.org/reference/pyiceberg/io/)

@@ -1,4 +1,3 @@
-from dataclasses import replace
 from decimal import Decimal
 import argparse
 import json
@@ -12,7 +11,7 @@ import pytest
 
 from crowdb_tpc_loader import cli
 from crowdb_tpc_loader.errors import ArgumentError
-from crowdb_tpc_loader.security import Redactor, RedactingFilter, safe_uri
+from crowdb_tpc_loader.security import Redactor, RedactingFilter
 
 
 def parse(argv):
@@ -50,6 +49,7 @@ def test_defaults_and_env(monkeypatch):
     assert opts.sf == 1 and opts.namespace == ("tpcds",)
     assert opts.catalog_uri == "https://example.test/catalog"
     assert opts.token == "environment-secret" and opts.on_exists == "error"
+    assert opts.upload_workers == 24
     assert "environment-secret" not in repr(opts)
 
 
@@ -70,7 +70,8 @@ def test_bad_catalog_uri(uri):
 
 
 @pytest.mark.parametrize("extra", [["--namespace", "a..b"], ["--namespace", "../evil"],
-                                    ["--upload-buffer-mib", "65"], ["--token", "a\rb"],
+                                    ["--upload-buffer-mib", "65"], ["--upload-workers", "25"],
+                                    ["--token", "a\rb"],
                                     ["--catalog-property", "token=bad"], ["--catalog-property", "bad"],
                                     ["--memory-limit", "0GB"], ["--memory-limit", "1GB; DROP"]])
 def test_invalid_load_options(extra):
