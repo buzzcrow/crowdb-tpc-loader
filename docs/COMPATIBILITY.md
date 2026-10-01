@@ -1,6 +1,6 @@
 # Compatibility
 
-The package requires Python 3.10+, PyArrow `>=18,<24`, PyIceberg `>=0.10,<0.11`, and DuckDB `>=1.4,<1.6`. TPC-H uses `tpchgen-cli` 3.x; automatic download pins 3.0.0. These ranges are package constraints, not a claim that every version combination passed. The [test record](TEST_REPORT.md) names the observed local combination.
+The package requires Python 3.10–3.12, PyArrow `>=18,<24`, PyIceberg `>=0.10,<0.11`, and DuckDB `>=1.4,<1.6`. TPC-H uses `tpchgen-cli` 3.x; automatic download pins 3.0.0. These ranges are package constraints, not a claim that every version combination passed. The [test record](TEST_REPORT.md) names the observed local combination.
 
 `load` requires an Iceberg REST Catalog and working remote FileIO. It reads table locations and credentials from the catalog; it never registers a local path. The default `crowdb_tpc_loader.crowdb_fileio.CrowdbFileIO` uses exact-object opens on CROWDB's native Iceberg endpoint, which does not require S3 prefix listing. Other deployments can provide a trusted FileIO class with `--py-io-impl`.
 

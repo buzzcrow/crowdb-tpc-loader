@@ -7,7 +7,7 @@ Generate TPC-H or TPC-DS Parquet, upload it to CROWDB Iceberg, and register comp
 
 ## Install
 
-Python 3.10 or later is required. After the first PyPI release:
+Python 3.10–3.12 is required. After the first PyPI release:
 
 ```sh
 python3 -m venv .venv

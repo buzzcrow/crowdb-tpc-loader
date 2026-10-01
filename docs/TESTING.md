@@ -1,6 +1,6 @@
 # Testing
 
-CI runs `ruff check src tests scripts`, `ruff format --check src tests scripts`, and `python -m pytest` on Python 3.10, 3.12, and 3.13. It builds and checks the wheel and sdist on Python 3.12. The default tests include unit and local PyArrow/PyIceberg integration tests. Real generators and a CROWDB instance are opt-in.
+CI runs `ruff check src tests scripts`, `ruff format --check src tests scripts`, and `python -m pytest` on Python 3.10, 3.11, and 3.12. It builds and checks the wheel and sdist on Python 3.12. The default tests include unit and local PyArrow/PyIceberg integration tests. Real generators and a CROWDB instance are opt-in.
 
 ## Local checks
 
