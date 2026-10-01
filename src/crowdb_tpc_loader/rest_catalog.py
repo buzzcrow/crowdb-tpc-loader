@@ -5,6 +5,7 @@ only this catalog's sessions, never requests globally. Keep PyIceberg auth and
 signing adapters intact. This guarded extension point is integration-tested when
 PyIceberg is installed; --help does not import this module.
 """
+
 from __future__ import annotations
 
 from functools import wraps

@@ -1,4 +1,5 @@
 """Central redaction for console output, library logs and persisted run reports."""
+
 from __future__ import annotations
 
 import logging
@@ -8,7 +9,10 @@ from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
 _URL = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s<>\"']+")
-_SECRET_KEY = re.compile(r"token|secret|password|credential|authorization|access[._-]?key|api[._-]?key|private[._-]?key|cookie|signature", re.I)
+_SECRET_KEY = re.compile(
+    r"token|secret|password|credential|authorization|access[._-]?key|api[._-]?key|private[._-]?key|cookie|signature",
+    re.I,
+)
 _ASSIGN = re.compile(
     r"(?i)((?:[\w.-]*(?:token|secret|password|credential|authorization|access[._-]?key|api[._-]?key|private[._-]?key|cookie|signature)[\w.-]*)"
     r"[\"']?\s*[:=]\s*[\"']?)(?:Bearer\s+)?[^\s,;\"'}]+"
@@ -57,8 +61,7 @@ class Redactor:
     def data(self, value: Any) -> Any:
         if isinstance(value, dict):
             return {
-                str(k): "[REDACTED]" if _SECRET_KEY.search(str(k)) else self.data(v)
-                for k, v in value.items()
+                str(k): "[REDACTED]" if _SECRET_KEY.search(str(k)) else self.data(v) for k, v in value.items()
             }
         if isinstance(value, (list, tuple)):
             return [self.data(v) for v in value]

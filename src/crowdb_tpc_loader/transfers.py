@@ -1,4 +1,5 @@
 """Bounded streaming uploads and FileIO probe checks."""
+
 from __future__ import annotations
 
 import time
@@ -14,7 +15,11 @@ from .util import copy_stream, format_bytes, hash_stream, remote_uri
 
 
 def upload_part(
-    table: Any, part: ParquetPart, uri: str, buffer_size: int, emit: Callable[[str], None],
+    table: Any,
+    part: ParquetPart,
+    uri: str,
+    buffer_size: int,
+    emit: Callable[[str], None],
 ) -> str:
     remote_uri(uri)
     last_progress = time.monotonic()
@@ -33,7 +38,9 @@ def upload_part(
             with part.path.open("rb") as source:
                 count, digest = hash_stream(source, buffer_size)
             if count != part.size_bytes:
-                raise LoadError("Local Parquet file changed size after validation; uploaded object will not be registered")
+                raise LoadError(
+                    "Local Parquet file changed size after validation; uploaded object will not be registered"
+                )
             upload_file(table.io.properties, uri, part.path, count, progress)
         else:
             output = table.io.new_output(uri)
@@ -42,12 +49,15 @@ def upload_part(
     except FileExistsError as exc:
         raise LoadError("Unique target data URI unexpectedly already exists; refusing to overwrite") from exc
     if count != part.size_bytes:
-        raise LoadError("Local Parquet file changed size after validation; uploaded object will not be registered")
+        raise LoadError(
+            "Local Parquet file changed size after validation; uploaded object will not be registered"
+        )
     return digest
 
 
-def probe_fileio(backend: Any, scratch: Path, report: RunReport, buffer_size: int,
-                 emit: Callable[[str], None]) -> None:
+def probe_fileio(
+    backend: Any, scratch: Path, report: RunReport, buffer_size: int, emit: Callable[[str], None]
+) -> None:
     import pyarrow as pa
     import pyarrow.parquet as pq
 
@@ -79,7 +89,11 @@ def probe_fileio(backend: Any, scratch: Path, report: RunReport, buffer_size: in
             record["state"] = "deleted"
         except Exception as exc:
             record["cleanup_error"] = str(exc)
-            report.data["warnings"].append("Uncommitted preflight probe could not be deleted; see probe_cleanup_candidates")
+            report.data["warnings"].append(
+                "Uncommitted preflight probe could not be deleted; see probe_cleanup_candidates"
+            )
         local.unlink(missing_ok=True)
         report.save()
-    emit("FileIO preflight passed. Backend free-space information is unavailable; upload errors will be reported.")
+    emit(
+        "FileIO preflight passed. Backend free-space information is unavailable; upload errors will be reported."
+    )

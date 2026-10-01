@@ -1,4 +1,5 @@
 """Atomic, secret-free checkpoints and final reports."""
+
 from __future__ import annotations
 
 import json
@@ -74,16 +75,27 @@ class RunReport:
         row = self.table(table.name)
         if row["status"] != "skipped":
             row["status"] = "generated"
-        row.update({
-            "row_count": table.rows,
-            "size_bytes": table.size_bytes,
-            "file_count": len(table.parts),
-            "schema": [{"name": field.name, "type": str(field.type), "nullable": field.nullable}
-                       for field in table.schema],
-            "files": [{"local_path": str(part.path.relative_to(root)), "row_count": part.rows,
-                       "size_bytes": part.size_bytes, "remote_uri": None, "state": "local"}
-                      for part in table.parts],
-        })
+        row.update(
+            {
+                "row_count": table.rows,
+                "size_bytes": table.size_bytes,
+                "file_count": len(table.parts),
+                "schema": [
+                    {"name": field.name, "type": str(field.type), "nullable": field.nullable}
+                    for field in table.schema
+                ],
+                "files": [
+                    {
+                        "local_path": str(part.path.relative_to(root)),
+                        "row_count": part.rows,
+                        "size_bytes": part.size_bytes,
+                        "remote_uri": None,
+                        "state": "local",
+                    }
+                    for part in table.parts
+                ],
+            }
+        )
         self.save()
 
     def finish(self, status: str, error: str | None = None) -> None:
@@ -99,11 +111,18 @@ class RunReport:
         result: dict[str, Any] = {}
         for status in ("succeeded", "skipped", "failed", "uncertain"):
             result[status] = [name for name, row in tables.items() if row["status"] == status]
-        result["not_loaded"] = [name for name, row in tables.items()
-                                if row["status"] not in {"succeeded", "skipped", "failed", "uncertain"}]
+        result["not_loaded"] = [
+            name
+            for name, row in tables.items()
+            if row["status"] not in {"succeeded", "skipped", "failed", "uncertain"}
+        ]
         result["tables_requiring_inspection"] = [
-            {"table": name, "identifier": row.get("table_identifier"),
-             "creation_state": row.get("table_creation_state"), "status": row["status"]}
+            {
+                "table": name,
+                "identifier": row.get("table_identifier"),
+                "creation_state": row.get("table_creation_state"),
+                "status": row["status"],
+            }
             for name, row in tables.items()
             if row.get("table_creation_state") and row["status"] not in {"succeeded", "skipped"}
         ]

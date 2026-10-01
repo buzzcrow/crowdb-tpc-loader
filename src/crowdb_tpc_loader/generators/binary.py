@@ -3,6 +3,7 @@
 No cargo, Rust build, package installer, shell, global environment mutation or
 source-distribution fallback. The native binary is cached in a user-owned folder.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -78,9 +79,12 @@ def _request(url: str, host: str, timeout: float):
 def extract_binary(wheel: Path, destination: Path) -> None:
     filename = "tpchgen-cli.exe" if os.name == "nt" else "tpchgen-cli"
     with zipfile.ZipFile(wheel) as archive:
-        matches = [info for info in archive.infolist()
-                   if info.filename.endswith(".data/scripts/" + filename)
-                   or (".data/scripts/" in info.filename and Path(info.filename).name == filename)]
+        matches = [
+            info
+            for info in archive.infolist()
+            if info.filename.endswith(".data/scripts/" + filename)
+            or (".data/scripts/" in info.filename and Path(info.filename).name == filename)
+        ]
         if len(matches) != 1:
             raise GenerationError("Published wheel does not contain exactly one expected tpchgen executable")
         info = matches[0]
@@ -100,17 +104,27 @@ def get_binary(no_download: bool, timeout: float, emit: Callable[[str], None]) -
         try:
             data = json.loads(receipt.read_text(encoding="utf-8"))
             with binary.open("rb") as stream:
-                actual = hashlib.file_digest(stream, "sha256").hexdigest() if hasattr(hashlib, "file_digest") else _digest(stream)
+                actual = (
+                    hashlib.file_digest(stream, "sha256").hexdigest()
+                    if hasattr(hashlib, "file_digest")
+                    else _digest(stream)
+                )
             if data["binary_sha256"] == actual and data["version"] == PINNED_TPCHGEN:
                 return binary, data
         except (OSError, ValueError, KeyError):
             pass
-        raise GenerationError(f"Cached tpchgen binary failed integrity validation; remove this cache directory: {root}")
+        raise GenerationError(
+            f"Cached tpchgen binary failed integrity validation; remove this cache directory: {root}"
+        )
     if no_download:
-        raise GenerationError("tpchgen-cli is missing and --no-download was specified; install a prebuilt binary or use --tpchgen")
+        raise GenerationError(
+            "tpchgen-cli is missing and --no-download was specified; install a prebuilt binary or use --tpchgen"
+        )
     emit(f"Preparing tpchgen-cli {PINNED_TPCHGEN}: downloading a compatible binary wheel (no Rust build)")
     try:
-        with _request(f"https://pypi.org/pypi/tpchgen-cli/{PINNED_TPCHGEN}/json", "pypi.org", timeout) as response:
+        with _request(
+            f"https://pypi.org/pypi/tpchgen-cli/{PINNED_TPCHGEN}/json", "pypi.org", timeout
+        ) as response:
             raw = response.read(8 * 1024 * 1024 + 1)
             if len(raw) > 8 * 1024 * 1024:
                 raise GenerationError("Unexpectedly large package metadata response")
@@ -125,7 +139,10 @@ def get_binary(no_download: bool, timeout: float, emit: Callable[[str], None]) -
             wheel = temporary / "distribution.whl"
             digest = hashlib.sha256()
             size = 0
-            with _request(item["url"], "files.pythonhosted.org", timeout) as response, wheel.open("xb") as output:
+            with (
+                _request(item["url"], "files.pythonhosted.org", timeout) as response,
+                wheel.open("xb") as output,
+            ):
                 while chunk := response.read(1024 * 1024):
                     size += len(chunk)
                     if size > MAX_WHEEL_BYTES:
@@ -138,8 +155,13 @@ def get_binary(no_download: bool, timeout: float, emit: Callable[[str], None]) -
             extract_binary(wheel, executable)
             with executable.open("rb") as stream:
                 binary_sha = _digest(stream)
-            info = {"version": PINNED_TPCHGEN, "wheel": item["filename"], "wheel_sha256": expected_digest,
-                    "binary_sha256": binary_sha, "source": "PyPI binary wheel"}
+            info = {
+                "version": PINNED_TPCHGEN,
+                "wheel": item["filename"],
+                "wheel_sha256": expected_digest,
+                "binary_sha256": binary_sha,
+                "source": "PyPI binary wheel",
+            }
             ready = temporary / "ready"
             ready.mkdir()
             os.replace(executable, ready / binary.name)

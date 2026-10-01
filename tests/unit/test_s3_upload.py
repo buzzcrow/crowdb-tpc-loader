@@ -15,7 +15,9 @@ class FakeS3:
         self.aborted = False
 
     def head_object(self, **_kwargs):
-        raise ClientError({"Error": {"Code": "404"}, "ResponseMetadata": {"HTTPStatusCode": 404}}, "HeadObject")
+        raise ClientError(
+            {"Error": {"Code": "404"}, "ResponseMetadata": {"HTTPStatusCode": 404}}, "HeadObject"
+        )
 
     def put_object(self, **kwargs):
         self.puts.append((kwargs["ContentLength"], kwargs["IfNoneMatch"], kwargs["Body"].read(1)))

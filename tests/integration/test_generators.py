@@ -1,4 +1,5 @@
 """Explicitly opt-in real native generation, with complete footer validation."""
+
 from decimal import Decimal
 from pathlib import Path
 import os
@@ -25,8 +26,13 @@ def test_complete_native_dataset(benchmark, sf, tmp_path):
     if benchmark == "tpcds":
         pytest.importorskip("duckdb")
     executable = os.getenv("TPC_H_GENERATOR")
-    options = Options("generate", benchmark, Decimal(sf), output_dir=tmp_path,
-                      tpchgen=Path(executable) if executable else None)
+    options = Options(
+        "generate",
+        benchmark,
+        Decimal(sf),
+        output_dir=tmp_path,
+        tpchgen=Path(executable) if executable else None,
+    )
     generator = make_generator(options, print, Redactor())
     scratch = tmp_path / "scratch"
     scratch.mkdir()

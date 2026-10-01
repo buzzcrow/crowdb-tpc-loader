@@ -6,6 +6,7 @@ these HTTP operations. Preflight verifies compatibility before generation.
 Authentication is restricted to the catalog origin / explicit allowlisted origins;
 redirects are refused, and TLS certificate verification remains enabled.
 """
+
 from __future__ import annotations
 
 import io
@@ -71,7 +72,9 @@ class _Transport:
                 raise PermissionError(text + "; check FileIO credentials and http.auth-origins") from None
             if code in {409, 412}:
                 raise FileExistsError(text) from None
-            raise CompatibilityError(text + "; endpoint must support HEAD, ranged GET, conditional PUT and DELETE") from None
+            raise CompatibilityError(
+                text + "; endpoint must support HEAD, ranged GET, conditional PUT and DELETE"
+            ) from None
         except urllib.error.URLError:
             raise OSError(f"HTTP FileIO {method} could not reach {safe_uri(uri)}") from None
 
@@ -131,7 +134,9 @@ class _RangeReader(io.RawIOBase):
                 if response.headers.get("Content-Range") != f"bytes {start}-{end}/{self.size}":
                     raise CompatibilityError("HTTP FileIO received a mismatched Content-Range")
             elif not (response.status == 200 and start == 0 and end == self.size - 1):
-                raise CompatibilityError("HTTP endpoint ignored the Range request; refusing a full-file memory fallback")
+                raise CompatibilityError(
+                    "HTTP endpoint ignored the Range request; refusing a full-file memory fallback"
+                )
             body = response.read(end - start + 2)
             if len(body) != end - start + 1:
                 raise OSError("HTTP FileIO returned a truncated/oversized byte range")
@@ -149,19 +154,20 @@ class _RangeReader(io.RawIOBase):
             take = min(wanted, len(self.cache) - offset)
             if take <= 0:
                 raise OSError("HTTP reader made no progress")
-            chunks.append(self.cache[offset:offset + take])
+            chunks.append(self.cache[offset : offset + take])
             self.position += take
             wanted -= take
         return b"".join(chunks)
 
     def readinto(self, buffer) -> int:
         data = self.read(len(buffer))
-        buffer[:len(data)] = data
+        buffer[: len(data)] = data
         return len(data)
 
 
 class _UploadStream(io.BufferedIOBase):
     """Disk spool yields a known Content-Length without retaining whole files in RAM."""
+
     def __init__(self, transport: _Transport, uri: str, overwrite: bool):
         super().__init__()
         self.transport, self.uri, self.overwrite = transport, uri, overwrite
@@ -253,6 +259,7 @@ class _HttpOutput(OutputFile):
 
 class HttpFileIO(PyArrowFileIO):
     """Standard HTTP object FileIO; non-HTTP schemes delegate to PyIceberg's native I/O."""
+
     def __init__(self, properties=None):
         super().__init__(properties or {})
         self.transport = _Transport(self.properties)
@@ -263,11 +270,13 @@ class HttpFileIO(PyArrowFileIO):
             if not netloc:
                 raise CompatibilityError("HTTP Arrow filesystem requires a host")
             from .arrow_http_bridge import make_filesystem
+
             return make_filesystem(self, scheme, netloc)
         return super()._initialize_fs(scheme, netloc)
 
     def _delegate(self, location: str):
         from pyiceberg.io import load_file_io
+
         scheme = urlsplit(location).scheme
         if scheme not in self._delegates:
             properties = {k: v for k, v in self.properties.items() if k != "py-io-impl"}

@@ -1,4 +1,5 @@
 """Filesystem ownership, bounded streaming and resource preflight."""
+
 from __future__ import annotations
 
 import hashlib
@@ -16,8 +17,8 @@ from urllib.parse import urlsplit
 
 from .errors import ArgumentError, CompatibilityError, ResourceError
 
-MIB = 1024 ** 2
-GIB = 1024 ** 3
+MIB = 1024**2
+GIB = 1024**3
 
 
 def format_bytes(size: int) -> str:

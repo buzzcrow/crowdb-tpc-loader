@@ -2,7 +2,6 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 import hashlib
-import io
 import json
 import os
 import platform
@@ -14,7 +13,7 @@ from packaging.tags import Tag
 
 from crowdb_tpc_loader.errors import GenerationError
 from crowdb_tpc_loader.generators import binary
-from crowdb_tpc_loader.generators.tpch import build_command, native_environment, parse_version, TPCHGenerator
+from crowdb_tpc_loader.generators.tpch import build_command, native_environment, parse_version
 from crowdb_tpc_loader.generators.tpcds import sql_literal
 
 
@@ -23,11 +22,13 @@ def item(filename, **extra):
 
 
 def test_wheel_select_native_only():
-    files = [item("tpchgen_cli-3.0.0.tar.gz", packagetype="sdist"),
-             item("tpchgen_cli-3.0.0-py3-none-manylinux_2_17_x86_64.whl"),
-             item("tpchgen_cli-3.0.0-py3-none-win_amd64.whl"),
-             item("tpchgen_cli-2.0.0-py3-none-manylinux_2_17_x86_64.whl"),
-             item("evil-3.0.0-py3-none-manylinux_2_17_x86_64.whl")]
+    files = [
+        item("tpchgen_cli-3.0.0.tar.gz", packagetype="sdist"),
+        item("tpchgen_cli-3.0.0-py3-none-manylinux_2_17_x86_64.whl"),
+        item("tpchgen_cli-3.0.0-py3-none-win_amd64.whl"),
+        item("tpchgen_cli-2.0.0-py3-none-manylinux_2_17_x86_64.whl"),
+        item("evil-3.0.0-py3-none-manylinux_2_17_x86_64.whl"),
+    ]
     tags = [Tag("py3", "none", "manylinux_2_17_x86_64")]
     assert binary.choose_wheel(files, tags) == files[1]
     with pytest.raises(GenerationError, match="No source build"):
@@ -36,14 +37,18 @@ def test_wheel_select_native_only():
 
 def test_yanked_wheel_refused():
     with pytest.raises(GenerationError):
-        binary.choose_wheel([item("tpchgen_cli-3.0.0-py3-none-any.whl", yanked=True)], [Tag("py3","none","any")])
+        binary.choose_wheel(
+            [item("tpchgen_cli-3.0.0-py3-none-any.whl", yanked=True)], [Tag("py3", "none", "any")]
+        )
 
 
 def test_extract_only_native_executable(tmp_path):
     wheel = tmp_path / "input.whl"
     executable = "tpchgen-cli.exe" if os.name == "nt" else "tpchgen-cli"
     with zipfile.ZipFile(wheel, "w") as archive:
-        archive.writestr("tpchgen_cli-3.0.0.data/scripts/" + executable, b"FAKE TEST EXECUTABLE - NEVER EXECUTED")
+        archive.writestr(
+            "tpchgen_cli-3.0.0.data/scripts/" + executable, b"FAKE TEST EXECUTABLE - NEVER EXECUTED"
+        )
         archive.writestr("../../evil.py", b"must not extract")
         archive.writestr("package/__init__.py", b"must not execute")
     binary.extract_binary(wheel, tmp_path / "binary")
@@ -77,7 +82,9 @@ def test_cached_binary_hash_checked(monkeypatch, tmp_path):
     path = root / ("tpchgen-cli.exe" if os.name == "nt" else "tpchgen-cli")
     content = b"fake-cache-never-executed"
     path.write_bytes(content)
-    (root / "receipt.json").write_text(json.dumps({"version":"3.0.0", "binary_sha256":hashlib.sha256(content).hexdigest()}))
+    (root / "receipt.json").write_text(
+        json.dumps({"version": "3.0.0", "binary_sha256": hashlib.sha256(content).hexdigest()})
+    )
     assert binary.get_binary(True, 1, lambda m: None)[0] == path
     path.write_bytes(b"tampered")
     with pytest.raises(GenerationError, match="integrity"):
@@ -97,7 +104,9 @@ def test_unrecognized_version(text):
 
 def test_command_has_partition_and_memory_boundaries(options):
     options = replace(options, sf=Decimal(25), threads=3)
-    command = build_command(Path("/bin/tpchgen-cli"), options, Path("/tmp/out with spaces"), "--num-threads --no-progress")
+    command = build_command(
+        Path("/bin/tpchgen-cli"), options, Path("/tmp/out with spaces"), "--num-threads --no-progress"
+    )
     assert command[:2] == ["/bin/tpchgen-cli", "parquet"]
     assert command[command.index("--parts") + 1] == "3"
     assert command[command.index("--num-threads") + 1] == "3"

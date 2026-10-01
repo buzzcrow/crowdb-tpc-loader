@@ -1,6 +1,6 @@
 # Failure recovery: determine commit status before handling files
 
-The tool does not provide automatic resume, overwrite, drop, purge, or remote garbage collection. A run commits one table at a time; there is no atomic transaction across all 8 or 24 tables. With concurrent uploads, all table files are uploaded before the first table commit; an upload failure prevents all commits in that batch. A failure during ordered commits does not roll back tables already committed successfully.
+The tool does not provide automatic resume, overwrite, drop, purge, or remote garbage collection. There is no atomic transaction across all 8 or 24 tables. With concurrent table writes, each table uploads its files and commits one snapshot independently. An upload or commit failure in one table does not roll back successful snapshots in other tables.
 
 ## Reports and directories
 
@@ -36,7 +36,7 @@ First run the independent verifier on tables marked `succeeded` in the report. T
 
 ### Commit request times out
 
-The tool makes up to three rounds of read-only verification without calling `add_files` again. It records success only if the current snapshot's file set, row counts, and sizes match exactly. Otherwise, it records `uncertain` and stops processing later tables.
+The tool makes up to three rounds of read-only verification without calling `add_files` again. It records success only if the current snapshot's file set, row counts, and sizes match exactly. Otherwise, it records `uncertain` and marks that table uncertain; other in-flight tables may still finish.
 
 Another writer may subsequently change the final snapshot. Files recorded as `registered` may also be referenced by historical snapshots; absence from the current snapshot does not prove absence from history. Use the namespace, table UUID, run ID, and all file URIs to inspect server logs, snapshots, and branch references before proceeding.
 

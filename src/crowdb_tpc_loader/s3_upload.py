@@ -79,7 +79,11 @@ def _client(properties: dict):
 
 
 def upload_file(
-    properties: dict, uri: str, path: Path, size: int, progress: Callable[[int], None],
+    properties: dict,
+    uri: str,
+    path: Path,
+    size: int,
+    progress: Callable[[int], None],
 ) -> None:
     """PUT files below 256 MiB; otherwise use 64-MiB-minimum logical parts."""
     bucket, key = _bucket_key(uri)
@@ -95,7 +99,11 @@ def upload_file(
     if size < MULTIPART_THRESHOLD:
         with path.open("rb") as source:
             client.put_object(
-                Bucket=bucket, Key=key, Body=source, ContentLength=size, IfNoneMatch="*",
+                Bucket=bucket,
+                Key=key,
+                Body=source,
+                ContentLength=size,
+                IfNoneMatch="*",
             )
         progress(size)
         return
@@ -111,16 +119,23 @@ def upload_file(
                 length = min(PART_BYTES, size - offset)
                 reader = _PartReader(source, length)
                 uploaded = client.upload_part(
-                    Bucket=bucket, Key=key, UploadId=upload_id,
-                    PartNumber=len(parts) + 1, Body=reader, ContentLength=length,
+                    Bucket=bucket,
+                    Key=key,
+                    UploadId=upload_id,
+                    PartNumber=len(parts) + 1,
+                    Body=reader,
+                    ContentLength=length,
                 )
                 parts.append({"ETag": uploaded["ETag"], "PartNumber": len(parts) + 1})
                 offset += length
                 source.seek(offset)
                 progress(offset)
         client.complete_multipart_upload(
-            Bucket=bucket, Key=key, UploadId=upload_id,
-            MultipartUpload={"Parts": parts}, IfNoneMatch="*",
+            Bucket=bucket,
+            Key=key,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+            IfNoneMatch="*",
         )
     except BaseException:
         if upload_id is not None:

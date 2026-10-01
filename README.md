@@ -1,22 +1,25 @@
 # CrowDB TPC Loader
 
-Generate standard TPC-H or TPC-DS tables as Parquet, then upload and register them through CROWDB's Iceberg REST Catalog. The tool has two commands: `generate` for local Parquet and `load` for a complete remote import. It does not run benchmark queries or claim TPC certification.
+Generate TPC-H or TPC-DS Parquet, upload it to CROWDB Iceberg, and register complete tables through the REST Catalog. The loader creates 8 TPC-H or 24 TPC-DS tables. It does not run benchmark SQL queries or claim TPC certification.
+
+- Repository: [buzzcrow/crowdb-tpc-loader](https://github.com/buzzcrow/crowdb-tpc-loader)
+- End-to-end guide: [CROWDB TPC loader documentation](https://crowdb.dev/docs/tpc-loader/)
 
 ## Install
 
-Use Python 3.10 or later. From this repository:
+Python 3.10 or later is required. After the first PyPI release:
 
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install --only-binary=:all: -e .
+python -m pip install crowdb-tpc-loader
 ```
 
-The first TPC-H run obtains the `tpchgen-cli` 3.0.0 binary if none is installed. The first TPC-DS run may install DuckDB's official `tpcds` extension. Use `--no-download` and supply those dependencies ahead of time for an offline run. This package is not published to PyPI.
+Until PyPI publication, install from a checkout with `python -m pip install --only-binary=:all: -e .`. The first TPC-H run may download `tpchgen-cli` 3.0.0; TPC-DS may download DuckDB's `tpcds` extension. Use `--no-download` and provide these components ahead of time for an offline run.
 
-## Load a small dataset into CROWDB
+## Load
 
-Start a CROWDB Iceberg container and put the `ICEBERG_URI` and `ICEBERG_TOKEN` values from `crowdb-monitor credentials show --format env` in your shell. Treat the token as a secret. Use a fresh namespace for each import:
+Start `crowdb/crowdb-iceberg:latest` and export the `ICEBERG_URI` and `ICEBERG_TOKEN` values printed by `docker exec <container> crowdb-monitor credentials show --format env`. Keep the token private. Use a new namespace for each run:
 
 ```sh
 crowdb-tpc-loader load --benchmark tpch --sf 0.01 \
@@ -25,58 +28,36 @@ crowdb-tpc-loader load --benchmark tpcds --sf 0.01 \
   --namespace tpcds_demo --report-file ./tpcds-demo.json
 ```
 
-Each command generates and validates the whole benchmark dataset, creates its 8 or 24 unpartitioned Iceberg tables, uploads one or more Parquet files per table, then registers them in one snapshot commit per table. Local Parquet footers are validated before upload. The server checks each upload's signed payload or supplied checksum before accepting it, and PyIceberg reads remote footers during registration. The loader does not download uploaded files for a second checksum pass. Success removes local staging by default. The JSON report records table row counts, remote file locations, snapshots, and any failure. An existing target table makes `load` stop before generation; `--on-exists skip` skips it without verifying or repairing it.
+The loader validates the entire generated dataset before creating a table. It writes different tables concurrently, with 8 workers by default. Use `--upload-workers N` to control concurrent Iceberg table writes (1–24). Each table's files are uploaded and registered in one snapshot, with a durable report checkpoint before each remote side effect. One table's failure does not roll back tables that already succeeded. The report identifies committed, unregistered, and uncertain files; see [recovery](docs/RECOVERY.md) before retrying. An existing table stops the default load; `--on-exists skip` leaves it unchanged without verifying it.
 
-The bundled CrowDB FileIO handles exact-object metadata requests against the native Iceberg endpoint. It does not need S3 bucket listing. The native endpoint has no file DELETE, so `load` starts uploading with the first real table instead of writing an orphaned preflight object. Known-size CrowDB data files below 256 MiB use one conditional S3 PUT. Files of at least 256 MiB use multipart upload with non-final parts of at least 64 MiB, aligned to the 65,502-byte payload of a 64-KiB CrowDB frame. A failed multipart upload is aborted. PyIceberg continues to use FileIO for metadata and reads. For another storage service, select its FileIO with `--py-io-impl`. The command reads the storage locations and credentials returned by the catalog; it never registers local file paths.
+For local Parquet only, use `crowdb-tpc-loader generate --benchmark tpch --sf 0.01 --output-dir ./tpch-001`.
 
-With `--upload-workers 24` (the default), files from different tables can upload concurrently even when each table has only one Parquet file. Each table is committed once, in table order, after all uploads finish. `--upload-workers 1` retains sequential loading. If any upload fails, the concurrent batch is not committed; the report and local staging are kept for inspection. Copy buffers can use roughly `upload-workers × upload-buffer-mib` MiB.
+## Check the result
 
-## Read the imported tables
-
-In a fresh Python process with the same environment variables:
-
-```python
-import os
-from pyiceberg.catalog import load_catalog
-
-catalog = load_catalog(
-    "crowdb", type="rest",
-    uri=os.environ["ICEBERG_URI"], token=os.environ["ICEBERG_TOKEN"],
-    **{"py-io-impl": "crowdb_tpc_loader.crowdb_fileio.CrowdbFileIO"},
-)
-
-region = catalog.load_table("tpch_demo.region")
-print(region.scan(row_filter="r_regionkey == 1",
-                  selected_fields=("r_regionkey", "r_name")).to_arrow().to_pylist())
-
-item = catalog.load_table("tpcds_demo.item")
-print(item.scan(selected_fields=("i_item_sk", "i_item_id"), limit=5).to_arrow().to_pylist())
-```
-
-For a read-only check of every table, including remote footers and a sample Iceberg scan:
+Run the read-only verifier from a checkout after loading:
 
 ```sh
 python scripts/verify_crowdb.py ./tpch-demo.json --require-complete --iceberg-scan
-python scripts/verify_crowdb.py ./tpcds-demo.json --require-complete --iceberg-scan
 ```
 
-## Generate Parquet without uploading
+With DuckDB's `iceberg` and `httpfs` extensions, attach the REST Catalog using its token and query `tpch_demo.region` or run TPC-H Q1 against `tpch_demo.lineitem`. The [website guide](https://crowdb.dev/docs/tpc-loader/) has the SQL. A published `latest` image and the local DuckDB 1.5.6 CLI passed an SF 0.01 TPC-H import, independent table verification, and Q1 read on October 1, 2026. This is an integration check, not a performance result. See [compatibility](docs/COMPATIBILITY.md) and the [test record](docs/TEST_REPORT.md).
+
+## Develop and publish
 
 ```sh
-crowdb-tpc-loader generate --benchmark tpch --sf 0.01 --output-dir ./tpch-001
-crowdb-tpc-loader generate --benchmark tpcds --sf 0.01 --output-dir ./tpcds-001
-```
-
-The output directory must be new or empty. Each run writes `data/` and `run-summary.json`. Defaults are SF 1, two generator threads, 1 GB DuckDB memory limit, an 8 MiB upload buffer, 24 upload workers for `load`, and a 60-second network timeout. These limits are configurable with `--sf`, `--threads`, `--memory-limit`, `--upload-buffer-mib`, `--upload-workers`, and `--timeout`; the timeout is not a whole-run deadline.
-
-A load commits tables one at a time. A later commit failure leaves earlier committed tables intact and retains the local staging directory for investigation. See [recovery](docs/RECOVERY.md), [compatibility](docs/COMPATIBILITY.md), and the [test record](docs/TEST_REPORT.md) for detail. TPC-H and TPC-DS through SF 10 have been exercised against a local single-node CROWDB container, including spot DuckDB Iceberg queries; distributed deployments still need separate acceptance.
-
-## Develop
-
-```sh
-python -m pip install --only-binary=:all: -e '.[dev]'
-python -m pytest
+python -m pip install --only-binary=:all: -e '.[dev,sql-test]'
 ruff check src tests scripts
+ruff format --check src tests scripts
+python -m pytest
+python -m build
+python -m twine check dist/*
 ```
 
-The package uses Apache-2.0; third-party generators and libraries retain their own licenses.
+CI runs lint, format, tests, and package checks. Publishing is manual through [the PyPI workflow](.github/workflows/publish.yml) after creating a matching Git tag and configuring PyPI Trusted Publishing. See [testing](docs/TESTING.md) for optional real generator and CROWDB runs. The package is Apache-2.0; third-party generators and libraries keep their own licenses.
+
+To publish `0.1.0`:
+
+1. In PyPI, create a pending Trusted Publisher for project `crowdb-tpc-loader`: GitHub owner `buzzcrow`, repository `crowdb-tpc-loader`, workflow `publish.yml`, environment `pypi`. Create the `pypi` environment in GitHub.
+2. After CI is green on the release commit, create and push tag `v0.1.0`.
+3. In GitHub Actions, run **Publish to PyPI** manually with input `tag=v0.1.0`. It verifies the tag, reruns checks, builds distributions, and publishes through OIDC. No PyPI API token is stored in GitHub.
+4. Confirm the files on [PyPI](https://pypi.org/project/crowdb-tpc-loader/), then test `python -m pip install --no-cache-dir crowdb-tpc-loader==0.1.0` in a clean environment and run `crowdb-tpc-loader --version`.

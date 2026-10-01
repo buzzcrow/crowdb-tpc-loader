@@ -3,6 +3,7 @@
 Metadata/data writes still use HttpFileIO's conditional upload streams. Explicit
 paths are supported; recursive object listing and filesystem mutations are not.
 """
+
 from __future__ import annotations
 
 from urllib.parse import urlsplit
@@ -47,7 +48,9 @@ def make_filesystem(fileio, scheme: str, netloc: str):
             return result
 
         def get_file_info_selector(self, selector):
-            raise NotImplementedError("HTTP object listing is not supported; Iceberg supplies explicit manifest file paths")
+            raise NotImplementedError(
+                "HTTP object listing is not supported; Iceberg supplies explicit manifest file paths"
+            )
 
         def open_input_file(self, path):
             return pa.PythonFile(fileio.new_input(self._uri(path)).open(), mode="r")
@@ -68,7 +71,9 @@ def make_filesystem(fileio, scheme: str, netloc: str):
             raise NotImplementedError("Recursive deletion is deliberately unavailable")
 
         def delete_file(self, path):
-            raise NotImplementedError("Use explicit HttpFileIO.delete for independently verified uncommitted objects")
+            raise NotImplementedError(
+                "Use explicit HttpFileIO.delete for independently verified uncommitted objects"
+            )
 
         def move(self, src, dest):
             raise NotImplementedError("HTTP object move is unavailable")

@@ -1,4 +1,5 @@
 """DuckDB TPC-DS generation in an isolated, disk-backed native database."""
+
 from __future__ import annotations
 
 import importlib.metadata
@@ -39,21 +40,30 @@ class TPCDSGenerator:
         spill = scratch / "duckdb-spill"
         spill.mkdir(exist_ok=True)
         try:
-            self.connection = duckdb.connect(str(scratch / "tpcds.duckdb"), config={
-                "memory_limit": self.options.memory_limit,
-                "threads": str(self.options.threads),
-                "temp_directory": str(spill),
-                "preserve_insertion_order": "false",
-            })
+            self.connection = duckdb.connect(
+                str(scratch / "tpcds.duckdb"),
+                config={
+                    "memory_limit": self.options.memory_limit,
+                    "threads": str(self.options.threads),
+                    "temp_directory": str(spill),
+                    "preserve_insertion_order": "false",
+                },
+            )
             try:
                 self.connection.execute("LOAD tpcds")
             except Exception:
                 if self.options.no_download:
-                    raise GenerationError("DuckDB tpcds extension is not available locally and --no-download was specified")
-                self.emit("Installing DuckDB's official tpcds extension (first use may require network access)")
+                    raise GenerationError(
+                        "DuckDB tpcds extension is not available locally and --no-download was specified"
+                    )
+                self.emit(
+                    "Installing DuckDB's official tpcds extension (first use may require network access)"
+                )
                 self.connection.execute("INSTALL tpcds FROM core")
                 self.connection.execute("LOAD tpcds")
-            cursor = self.connection.execute("SELECT * FROM duckdb_extensions() WHERE extension_name = 'tpcds'")
+            cursor = self.connection.execute(
+                "SELECT * FROM duckdb_extensions() WHERE extension_name = 'tpcds'"
+            )
             row = cursor.fetchone()
             if row is None:
                 raise GenerationError("DuckDB did not report a loaded tpcds extension")

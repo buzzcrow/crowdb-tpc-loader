@@ -1,4 +1,5 @@
 """Subprocess adapter for the published tpchgen-cli 3.x binary."""
+
 from __future__ import annotations
 
 import math
@@ -18,8 +19,11 @@ from .binary import get_binary
 
 
 def native_environment(threads: int) -> dict[str, str]:
-    env = {key: value for key, value in os.environ.items()
-           if not re.search(r"TOKEN|SECRET|PASSWORD|CREDENTIAL|ACCESS_KEY|AUTHORIZATION", key, re.I)}
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not re.search(r"TOKEN|SECRET|PASSWORD|CREDENTIAL|ACCESS_KEY|AUTHORIZATION", key, re.I)
+    }
     env["RAYON_NUM_THREADS"] = str(threads)
     env["NO_COLOR"] = "1"
     return env
@@ -28,10 +32,14 @@ def native_environment(threads: int) -> dict[str, str]:
 def parse_version(text: str) -> str:
     match = re.search(r"\btpchgen(?:-cli)?\s+(\d+\.\d+\.\d+(?:[-+][\w.-]+)?)", text, re.I)
     if not match:
-        raise GenerationError("Cannot identify the tpchgen-cli executable/version; supply the published 3.x binary")
+        raise GenerationError(
+            "Cannot identify the tpchgen-cli executable/version; supply the published 3.x binary"
+        )
     version = match.group(1)
     if not version.startswith("3."):
-        raise GenerationError(f"Unsupported tpchgen-cli {version}; this adapter requires 3.x (Parquet subcommand)")
+        raise GenerationError(
+            f"Unsupported tpchgen-cli {version}; this adapter requires 3.x (Parquet subcommand)"
+        )
     return version
 
 
@@ -65,15 +73,27 @@ class TPCHGenerator:
                 raise GenerationError("--tpchgen must point to an executable native tpchgen-cli binary")
             self.details = {"source": "user-supplied/PATH executable", "executable": str(self.executable)}
         else:
-            self.executable, self.details = get_binary(self.options.no_download, self.options.timeout, self.emit)
+            self.executable, self.details = get_binary(
+                self.options.no_download, self.options.timeout, self.emit
+            )
         try:
-            result = subprocess.run([str(self.executable), "--version"], capture_output=True, text=True,
-                                    timeout=self.options.timeout, check=True,
-                                    env=native_environment(self.options.threads))
+            result = subprocess.run(
+                [str(self.executable), "--version"],
+                capture_output=True,
+                text=True,
+                timeout=self.options.timeout,
+                check=True,
+                env=native_environment(self.options.threads),
+            )
             self.version = parse_version(result.stdout + result.stderr)
-            help_result = subprocess.run([str(self.executable), "parquet", "--help"], capture_output=True,
-                                         text=True, check=True, timeout=self.options.timeout,
-                                         env=native_environment(self.options.threads))
+            help_result = subprocess.run(
+                [str(self.executable), "parquet", "--help"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=self.options.timeout,
+                env=native_environment(self.options.threads),
+            )
             self.help_text = help_result.stdout + help_result.stderr
         except (OSError, subprocess.SubprocessError) as exc:
             raise GenerationError(f"Cannot execute tpchgen-cli on this platform: {exc}") from exc
@@ -88,8 +108,12 @@ class TPCHGenerator:
         process = None
         reader = None
         try:
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                       env=native_environment(self.options.threads))
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env=native_environment(self.options.threads),
+            )
             assert process.stdout is not None
 
             def consume() -> None:

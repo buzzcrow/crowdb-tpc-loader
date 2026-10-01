@@ -3,9 +3,11 @@
 The only protected API access is the staged table of CreateTableTransaction.
 It is isolated below and guarded so incompatible clients fail before data generation.
 """
+
 from __future__ import annotations
 
 import importlib.metadata
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,13 +40,16 @@ def data_location(table: Any, filename: str) -> str:
         provider = provider_getter()
     else:
         from pyiceberg.table.locations import load_location_provider
+
         provider = load_location_provider(table.location(), table.metadata.properties)
     try:
         return remote_uri(provider.new_data_location(filename))
     except CompatibilityError:
         raise
     except Exception as exc:
-        raise CompatibilityError(f"Cannot obtain a durable data location from the catalog's table metadata: {exc}") from exc
+        raise CompatibilityError(
+            f"Cannot obtain a durable data location from the catalog's table metadata: {exc}"
+        ) from exc
 
 
 def table_uuid(table: Any) -> str:
@@ -77,12 +82,17 @@ def schema_compatible(table: Any, data: TableData) -> None:
     if actual.names != data.schema.names:
         raise CompatibilityError(f"{data.name}: catalog returned different column names/order")
     for left, right in zip(actual, data.schema):
-        both_strings = ((pa.types.is_string(left.type) or pa.types.is_large_string(left.type))
-                        and (pa.types.is_string(right.type) or pa.types.is_large_string(right.type)))
+        both_strings = (pa.types.is_string(left.type) or pa.types.is_large_string(left.type)) and (
+            pa.types.is_string(right.type) or pa.types.is_large_string(right.type)
+        )
         if left.type != right.type and not both_strings:
-            raise CompatibilityError(f"{data.name}.{left.name}: Iceberg type {left.type} differs from Parquet type {right.type}")
+            raise CompatibilityError(
+                f"{data.name}.{left.name}: Iceberg type {left.type} differs from Parquet type {right.type}"
+            )
         if not left.nullable and right.nullable:
-            raise CompatibilityError(f"{data.name}.{left.name}: catalog strengthened a nullable column to required")
+            raise CompatibilityError(
+                f"{data.name}.{left.name}: catalog strengthened a nullable column to required"
+            )
     if table.spec().fields:
         raise CompatibilityError("First-release benchmark tables must be unpartitioned")
 
@@ -92,14 +102,18 @@ class IcebergBackend:
         self.options, self.redactor = options, redactor
         self.catalog: Any = None
         self.probe_cleanup_supported = True
+        self.staging = None
 
     def connect(self) -> None:
         try:
             from packaging.version import Version
             from .rest_catalog import create_catalog
+
             version = importlib.metadata.version("pyiceberg")
             if not Version("0.10") <= Version(version) < Version("0.11"):
-                raise CompatibilityError(f"PyIceberg {version} is outside this release's 0.10.x adapter range")
+                raise CompatibilityError(
+                    f"PyIceberg {version} is outside this release's 0.10.x adapter range"
+                )
             properties = {"py-io-impl": CROWDB_FILE_IO}
             properties.update(self.options.catalog_properties)
             properties.update({"uri": self.options.catalog_uri, "http.timeout": str(self.options.timeout)})
@@ -114,10 +128,22 @@ class IcebergBackend:
         except ImportError as exc:
             raise CompatibilityError("PyIceberg and its FileIO dependencies are required for load") from exc
         except Exception as exc:
-            raise LoadError(f"REST Catalog connection failed: {exc}. Check --catalog-uri/ICEBERG_URI and credentials.") from exc
+            raise LoadError(
+                f"REST Catalog connection failed: {exc}. Check --catalog-uri/ICEBERG_URI and credentials."
+            ) from exc
+
+    def fork(self) -> "IcebergBackend":
+        from .security import Redactor
+
+        other = IcebergBackend(self.options, Redactor(tuple(self.redactor.secrets)))
+        other.connect()
+        if self.staging is not None:
+            other.set_staging(self.staging)
+        return other
 
     def existing(self, names: tuple[str, ...]) -> set[str]:
         from pyiceberg.exceptions import NoSuchNamespaceError
+
         try:
             identifiers = self.catalog.list_tables(self.options.namespace)
         except NoSuchNamespaceError:
@@ -128,20 +154,25 @@ class IcebergBackend:
 
     def ensure_namespace(self) -> None:
         from pyiceberg.exceptions import NamespaceAlreadyExistsError
+
         for length in range(1, len(self.options.namespace) + 1):
             try:
                 self.catalog.create_namespace(self.options.namespace[:length])
             except NamespaceAlreadyExistsError:
                 continue
             except Exception as exc:
-                raise LoadError(f"Cannot create namespace {'.'.join(self.options.namespace[:length])}: {exc}") from exc
+                raise LoadError(
+                    f"Cannot create namespace {'.'.join(self.options.namespace[:length])}: {exc}"
+                ) from exc
 
     def set_staging(self, scratch) -> None:
+        self.staging = scratch
         self.catalog.properties.setdefault("http.spool-directory", str(scratch))
 
     def stage_probe(self, run_id: str):
         """Ask the REST server for an UNCOMMITTED location; never publish a probe table."""
         import pyarrow as pa
+
         try:
             transaction = self.catalog.create_table_transaction(
                 (*self.options.namespace, f"__crowdb_tpc_probe_{run_id}"),
@@ -173,24 +204,44 @@ class IcebergBackend:
                 raise CompatibilityError(f"Catalog FileIO does not implement {method}")
 
     def create(self, data: TableData, run_id: str, generator: dict[str, Any]):
-        from pyiceberg.exceptions import TableAlreadyExistsError
+        from pyiceberg.exceptions import ServiceUnavailableError, TableAlreadyExistsError
+
         properties = {
-            "format-version": "2", "commit.retry.num-retries": "0", "crowdb-tpc-loader.run-id": run_id,
+            "format-version": "2",
+            "commit.retry.num-retries": "0",
+            "crowdb-tpc-loader.run-id": run_id,
             "crowdb-tpc-loader.benchmark": self.options.benchmark,
             "crowdb-tpc-loader.scale-factor": str(self.options.sf),
             "crowdb-tpc-loader.generator": str(generator["implementation"]),
             "crowdb-tpc-loader.generator-version": str(generator["version"]),
         }
         try:
-            table = self.catalog.create_table((*self.options.namespace, data.name), schema=data.schema,
-                                              properties=properties)
+            for attempt in range(6):
+                try:
+                    table = self.catalog.create_table(
+                        (*self.options.namespace, data.name), schema=data.schema, properties=properties
+                    )
+                    break
+                except ServiceUnavailableError:
+                    if attempt == 5:
+                        raise
+                    time.sleep(0.25 * (attempt + 1))
+                except TableAlreadyExistsError:
+                    if attempt == 0:
+                        raise
+                    table = self.catalog.load_table((*self.options.namespace, data.name))
+                    if table.metadata.properties.get("crowdb-tpc-loader.run-id") != run_id:
+                        raise
+                    break
             self._learn(table)
             schema_compatible(table, data)
             return table
         except TableAlreadyExistsError as exc:
             if self.options.on_exists == "skip":
                 return None
-            raise ExistingTablesError(f"Table {data.name} appeared during this run; refusing to modify it") from exc
+            raise ExistingTablesError(
+                f"Table {data.name} appeared during this run; refusing to modify it"
+            ) from exc
         except (CompatibilityError, LoadError):
             raise
         except Exception as exc:
@@ -200,16 +251,21 @@ class IcebergBackend:
         """Run the exact PyIceberg Parquet-to-DataFile conversion without committing."""
         try:
             from pyiceberg.io.pyarrow import parquet_files_to_data_files
+
             for _ in parquet_files_to_data_files(table.io, table.metadata, iter(uris)):
                 pass
         except Exception as exc:
-            raise CompatibilityError(f"This FileIO/PyIceberg combination cannot inspect/register remote Parquet: {exc}") from exc
+            raise CompatibilityError(
+                f"This FileIO/PyIceberg combination cannot inspect/register remote Parquet: {exc}"
+            ) from exc
 
     def reload_inventory(self, table: Any) -> tuple[Any, Inventory]:
         refreshed = self.catalog.load_table(table.name())
         self._learn(refreshed)
         if table_uuid(refreshed) != table_uuid(table):
-            raise LoadError("Table identity changed concurrently; refusing to treat a replacement table as this run's table")
+            raise LoadError(
+                "Table identity changed concurrently; refusing to treat a replacement table as this run's table"
+            )
         return refreshed, inspect_inventory(refreshed)
 
     def assert_empty(self, table: Any) -> Any:
@@ -221,12 +277,20 @@ class IcebergBackend:
     def register(self, table: Any, uris: list[str], run_id: str) -> None:
         for uri in uris:
             remote_uri(uri)
-        table.add_files(file_paths=uris, check_duplicate_files=True,
-                        snapshot_properties={"crowdb-tpc-loader.run-id": run_id})
+        table.add_files(
+            file_paths=uris,
+            check_duplicate_files=True,
+            snapshot_properties={"crowdb-tpc-loader.run-id": run_id},
+        )
 
     @staticmethod
     def definite_rejection(error: Exception) -> bool:
         # A transport failure / generic server exception is never assumed to be a rejected commit.
-        from pyiceberg.exceptions import (BadRequestError, CommitFailedException,
-                                          ForbiddenError, UnauthorizedError)
+        from pyiceberg.exceptions import (
+            BadRequestError,
+            CommitFailedException,
+            ForbiddenError,
+            UnauthorizedError,
+        )
+
         return isinstance(error, (BadRequestError, CommitFailedException, ForbiddenError, UnauthorizedError))

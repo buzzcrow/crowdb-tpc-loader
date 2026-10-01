@@ -4,6 +4,7 @@ I = signed 32/64-bit benchmark INTEGER/identifier (width is preserved, never cas
 L = signed int64; S = Arrow string/large_string; D = date32.
 D<p>_<s> = exact decimal precision and scale. CHAR/VARCHAR are represented as UTF-8.
 """
+
 from __future__ import annotations
 
 from .models import Column
@@ -16,12 +17,22 @@ def columns(spec: str) -> tuple[Column, ...]:
 TPCH: dict[str, tuple[Column, ...]] = {
     "region": columns("r_regionkey:I r_name:S r_comment:S"),
     "nation": columns("n_nationkey:I n_name:S n_regionkey:I n_comment:S"),
-    "supplier": columns("s_suppkey:I s_name:S s_address:S s_nationkey:I s_phone:S s_acctbal:D15_2 s_comment:S"),
-    "customer": columns("c_custkey:I c_name:S c_address:S c_nationkey:I c_phone:S c_acctbal:D15_2 c_mktsegment:S c_comment:S"),
-    "part": columns("p_partkey:I p_name:S p_mfgr:S p_brand:S p_type:S p_size:I p_container:S p_retailprice:D15_2 p_comment:S"),
+    "supplier": columns(
+        "s_suppkey:I s_name:S s_address:S s_nationkey:I s_phone:S s_acctbal:D15_2 s_comment:S"
+    ),
+    "customer": columns(
+        "c_custkey:I c_name:S c_address:S c_nationkey:I c_phone:S c_acctbal:D15_2 c_mktsegment:S c_comment:S"
+    ),
+    "part": columns(
+        "p_partkey:I p_name:S p_mfgr:S p_brand:S p_type:S p_size:I p_container:S p_retailprice:D15_2 p_comment:S"
+    ),
     "partsupp": columns("ps_partkey:I ps_suppkey:I ps_availqty:I ps_supplycost:D15_2 ps_comment:S"),
-    "orders": columns("o_orderkey:I o_custkey:I o_orderstatus:S o_totalprice:D15_2 o_orderdate:D o_orderpriority:S o_clerk:S o_shippriority:I o_comment:S"),
-    "lineitem": columns("l_orderkey:I l_partkey:I l_suppkey:I l_linenumber:I l_quantity:D15_2 l_extendedprice:D15_2 l_discount:D15_2 l_tax:D15_2 l_returnflag:S l_linestatus:S l_shipdate:D l_commitdate:D l_receiptdate:D l_shipinstruct:S l_shipmode:S l_comment:S"),
+    "orders": columns(
+        "o_orderkey:I o_custkey:I o_orderstatus:S o_totalprice:D15_2 o_orderdate:D o_orderpriority:S o_clerk:S o_shippriority:I o_comment:S"
+    ),
+    "lineitem": columns(
+        "l_orderkey:I l_partkey:I l_suppkey:I l_linenumber:I l_quantity:D15_2 l_extendedprice:D15_2 l_discount:D15_2 l_tax:D15_2 l_returnflag:S l_linestatus:S l_shipdate:D l_commitdate:D l_receiptdate:D l_shipinstruct:S l_shipmode:S l_comment:S"
+    ),
 }
 
 TPCDS: dict[str, tuple[Column, ...]] = {
@@ -78,7 +89,9 @@ TPCDS: dict[str, tuple[Column, ...]] = {
         d_same_day_ly:I d_same_day_lq:I d_current_day:S d_current_week:S d_current_month:S
         d_current_quarter:S d_current_year:S
     """),
-    "household_demographics": columns("hd_demo_sk:I hd_income_band_sk:I hd_buy_potential:S hd_dep_count:I hd_vehicle_count:I"),
+    "household_demographics": columns(
+        "hd_demo_sk:I hd_income_band_sk:I hd_buy_potential:S hd_dep_count:I hd_vehicle_count:I"
+    ),
     "income_band": columns("ib_income_band_sk:I ib_lower_bound:I ib_upper_bound:I"),
     "inventory": columns("inv_date_sk:I inv_item_sk:I inv_warehouse_sk:I inv_quantity_on_hand:I"),
     "item": columns("""
@@ -94,7 +107,9 @@ TPCDS: dict[str, tuple[Column, ...]] = {
         p_channel_details:S p_purpose:S p_discount_active:S
     """),
     "reason": columns("r_reason_sk:I r_reason_id:S r_reason_desc:S"),
-    "ship_mode": columns("sm_ship_mode_sk:I sm_ship_mode_id:S sm_type:S sm_code:S sm_carrier:S sm_contract:S"),
+    "ship_mode": columns(
+        "sm_ship_mode_sk:I sm_ship_mode_id:S sm_type:S sm_code:S sm_carrier:S sm_contract:S"
+    ),
     "store": columns("""
         s_store_sk:I s_store_id:S s_rec_start_date:D s_rec_end_date:D s_closed_date_sk:I s_store_name:S
         s_number_employees:I s_floor_space:I s_hours:S s_manager:S s_market_id:I s_geography_class:S
@@ -116,7 +131,9 @@ TPCDS: dict[str, tuple[Column, ...]] = {
         ss_ext_wholesale_cost:D7_2 ss_ext_list_price:D7_2 ss_ext_tax:D7_2 ss_coupon_amt:D7_2
         ss_net_paid:D7_2 ss_net_paid_inc_tax:D7_2 ss_net_profit:D7_2
     """),
-    "time_dim": columns("t_time_sk:I t_time_id:S t_time:I t_hour:I t_minute:I t_second:I t_am_pm:S t_shift:S t_sub_shift:S t_meal_time:S"),
+    "time_dim": columns(
+        "t_time_sk:I t_time_id:S t_time:I t_hour:I t_minute:I t_second:I t_am_pm:S t_shift:S t_sub_shift:S t_meal_time:S"
+    ),
     "warehouse": columns("""
         w_warehouse_sk:I w_warehouse_id:S w_warehouse_name:S w_warehouse_sq_ft:I w_street_number:S
         w_street_name:S w_street_type:S w_suite_number:S w_city:S w_county:S w_state:S w_zip:S

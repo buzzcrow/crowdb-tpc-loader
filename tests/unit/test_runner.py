@@ -13,13 +13,28 @@ def make_runner(options, redactor, fake_backend, fake_generator_factory, make_da
     def validator(output, benchmark, sf, generated, emit):
         fake_backend.calls.append("validate_dataset")
         return make_data(inventory(benchmark), root=output)
+
     def probe(backend, *args):
         backend.calls.append("probe")
+
     def table_loader(backend, tables, report, buffer, emit, upload_workers=1):
-        return loader.load_tables(backend, tables, report, buffer, emit,
-                                  uploader=lambda *args: "digest", upload_workers=upload_workers)
-    defaults = dict(generator_factory=fake_generator_factory, backend_factory=lambda *args: fake_backend,
-                    validator=validator, prober=probe, table_loader=table_loader)
+        return loader.load_tables(
+            backend,
+            tables,
+            report,
+            buffer,
+            emit,
+            uploader=lambda *args: "digest",
+            upload_workers=upload_workers,
+        )
+
+    defaults = dict(
+        generator_factory=fake_generator_factory,
+        backend_factory=lambda *args: fake_backend,
+        validator=validator,
+        prober=probe,
+        table_loader=table_loader,
+    )
     defaults.update(kwargs)
     return Runner(options, lambda message: None, redactor, **defaults)
 
@@ -40,8 +55,9 @@ def test_load_success_cleanup_parent_safe(options, redactor, fake_backend, fake_
     assert "top-secret-credential" not in result.report_path.read_text()
 
 
-def test_native_fileio_does_not_leave_undeletable_probe(options, redactor, fake_backend,
-                                                       fake_generator_factory, make_data):
+def test_native_fileio_does_not_leave_undeletable_probe(
+    options, redactor, fake_backend, fake_generator_factory, make_data
+):
     fake_backend.probe_cleanup_supported = False
     runner = make_runner(options, redactor, fake_backend, fake_generator_factory, make_data)
     result = runner.run()
@@ -51,7 +67,9 @@ def test_native_fileio_does_not_leave_undeletable_probe(options, redactor, fake_
 
 
 def test_keep_files(options, redactor, fake_backend, fake_generator_factory, make_data):
-    runner = make_runner(replace(options, keep_files=True), redactor, fake_backend, fake_generator_factory, make_data)
+    runner = make_runner(
+        replace(options, keep_files=True), redactor, fake_backend, fake_generator_factory, make_data
+    )
     result = runner.run()
     assert result.exit_code == 0 and runner.work.exists()
     assert (runner.work / "data/lineitem/part-00000.parquet").exists()
@@ -59,7 +77,9 @@ def test_keep_files(options, redactor, fake_backend, fake_generator_factory, mak
     assert (runner.work / "run-summary.json").exists()
 
 
-def test_generate_persistent_output(options, redactor, fake_backend, fake_generator_factory, make_data, tmp_path):
+def test_generate_persistent_output(
+    options, redactor, fake_backend, fake_generator_factory, make_data, tmp_path
+):
     options = replace(options, command="generate", output_dir=tmp_path / "export", report_file=None)
     runner = make_runner(options, redactor, fake_backend, fake_generator_factory, make_data)
     result = runner.run()
@@ -70,10 +90,18 @@ def test_generate_persistent_output(options, redactor, fake_backend, fake_genera
     assert fake_backend.calls == ["validate_dataset"]
 
 
-def test_existing_error_before_generator_or_upload(options, redactor, fake_backend, fake_generator_factory, make_data):
+def test_existing_error_before_generator_or_upload(
+    options, redactor, fake_backend, fake_generator_factory, make_data
+):
     fake_backend.existing_names.add("region")
-    runner = make_runner(options, redactor, fake_backend, fake_generator_factory, make_data,
-                         generator_factory=lambda *args: pytest.fail("generator must not start"))
+    runner = make_runner(
+        options,
+        redactor,
+        fake_backend,
+        fake_generator_factory,
+        make_data,
+        generator_factory=lambda *args: pytest.fail("generator must not start"),
+    )
     result = runner.run()
     assert result.exit_code == 4 and runner.work is None
     assert fake_backend.calls == ["connect", "existing"]
@@ -82,27 +110,42 @@ def test_existing_error_before_generator_or_upload(options, redactor, fake_backe
 
 def test_all_skipped_shortcircuit(options, redactor, fake_backend, fake_generator_factory, make_data):
     fake_backend.existing_names = set(inventory("tpch"))
-    runner = make_runner(replace(options, on_exists="skip"), redactor, fake_backend, fake_generator_factory, make_data,
-                         generator_factory=lambda *args: pytest.fail("generator must not start"))
+    runner = make_runner(
+        replace(options, on_exists="skip"),
+        redactor,
+        fake_backend,
+        fake_generator_factory,
+        make_data,
+        generator_factory=lambda *args: pytest.fail("generator must not start"),
+    )
     result = runner.run()
     assert result.exit_code == 0 and len(result.report["summary"]["skipped"]) == 8
     assert fake_backend.calls == ["connect", "existing"] and runner.work is None
 
 
-def test_partial_skip_still_validates_complete_dataset(options, redactor, fake_backend, fake_generator_factory, make_data):
+def test_partial_skip_still_validates_complete_dataset(
+    options, redactor, fake_backend, fake_generator_factory, make_data
+):
     fake_backend.existing_names.add("region")
-    runner = make_runner(replace(options, on_exists="skip"), redactor, fake_backend, fake_generator_factory, make_data)
+    runner = make_runner(
+        replace(options, on_exists="skip"), redactor, fake_backend, fake_generator_factory, make_data
+    )
     result = runner.run()
     assert result.exit_code == 0 and result.report["summary"]["skipped"] == ["region"]
     assert "create:region" not in fake_backend.calls
     assert len(result.report["summary"]["succeeded"]) == 7
 
 
-@pytest.mark.parametrize("failure,code", [(ValidationError("bad decimal"), 3),
-                                        (ResourceError("disk full"), 5), (KeyboardInterrupt(),130)])
-def test_validation_failure_never_creates_tables_retains_work(options, redactor, fake_backend, fake_generator_factory, make_data, failure, code):
+@pytest.mark.parametrize(
+    "failure,code",
+    [(ValidationError("bad decimal"), 3), (ResourceError("disk full"), 5), (KeyboardInterrupt(), 130)],
+)
+def test_validation_failure_never_creates_tables_retains_work(
+    options, redactor, fake_backend, fake_generator_factory, make_data, failure, code
+):
     def reject(*args):
         raise failure
+
     runner = make_runner(options, redactor, fake_backend, fake_generator_factory, make_data, validator=reject)
     result = runner.run()
     assert result.exit_code == code and runner.work.exists()
@@ -114,6 +157,7 @@ def test_validation_failure_never_creates_tables_retains_work(options, redactor,
 def test_probe_failure_before_generation(options, redactor, fake_backend, fake_generator_factory, make_data):
     def probe(*args):
         raise CompatibilityError("FileIO refused")
+
     runner = make_runner(options, redactor, fake_backend, fake_generator_factory, make_data, prober=probe)
     result = runner.run()
     assert result.exit_code == 4 and runner.work.exists()
@@ -128,12 +172,19 @@ def test_explicit_report_no_overwrite(options, redactor, fake_backend, fake_gene
     assert not fake_backend.calls
 
 
-def test_nonempty_generate_refused(options, redactor, fake_backend, fake_generator_factory, make_data, tmp_path):
+def test_nonempty_generate_refused(
+    options, redactor, fake_backend, fake_generator_factory, make_data, tmp_path
+):
     output = tmp_path / "output"
     output.mkdir()
     (output / "user.txt").write_text("untouched")
-    runner = make_runner(replace(options, command="generate", output_dir=output), redactor,
-                         fake_backend, fake_generator_factory, make_data)
+    runner = make_runner(
+        replace(options, command="generate", output_dir=output),
+        redactor,
+        fake_backend,
+        fake_generator_factory,
+        make_data,
+    )
     result = runner.run()
     assert result.exit_code == 2 and (output / "user.txt").read_text() == "untouched"
     assert len(list(output.iterdir())) == 1
@@ -143,16 +194,24 @@ def test_generate_directory_race_does_not_overwrite_other_run(
     options, redactor, fake_backend, fake_generator_factory, make_data, monkeypatch, tmp_path
 ):
     from crowdb_tpc_loader import runner as runner_module
+
     original = runner_module.prepare_generate_directory
     output = tmp_path / "race-output"
+
     def raced_prepare(path):
         result = original(path)
         (result / "run-summary.json").write_text("OTHER RUN REPORT")
         (result / "data.parquet").write_bytes(b"OTHER RUN DATA")
         return result
+
     monkeypatch.setattr(runner_module, "prepare_generate_directory", raced_prepare)
-    runner = make_runner(replace(options, command="generate", output_dir=output), redactor,
-                         fake_backend, fake_generator_factory, make_data)
+    runner = make_runner(
+        replace(options, command="generate", output_dir=output),
+        redactor,
+        fake_backend,
+        fake_generator_factory,
+        make_data,
+    )
     result = runner.run()
     assert result.exit_code == 2
     assert (output / "run-summary.json").read_text() == "OTHER RUN REPORT"

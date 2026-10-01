@@ -1,4 +1,5 @@
 """DuckDB adapter control-flow tests with an explicit connection double, not dsdgen."""
+
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -53,9 +54,11 @@ class ConnectionDouble:
 
 def adapter(monkeypatch, options, redactor, connection, version="1.5.6"):
     calls = []
+
     def connect(path, config):
         calls.append((path, config))
         return connection
+
     monkeypatch.setitem(sys.modules, "duckdb", SimpleNamespace(connect=connect))
     monkeypatch.setattr(tpcds.importlib.metadata, "version", lambda name: version)
     result = tpcds.TPCDSGenerator(replace(options, benchmark="tpcds"), lambda message: None, redactor)

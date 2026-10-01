@@ -1,4 +1,5 @@
 """Real loopback HTTP tests. Optional PyIceberg base-class double is explicitly isolated."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -23,17 +24,26 @@ def http_module(monkeypatch):
     except ImportError:
         base = types.ModuleType("pyiceberg")
         module = types.ModuleType("pyiceberg.io")
+
         class FileIO:
-            def __init__(self, properties): self.properties = properties
+            def __init__(self, properties):
+                self.properties = properties
+
         class InputFile:
-            def __init__(self, location): self.location = location
+            def __init__(self, location):
+                self.location = location
+
         class OutputFile:
-            def __init__(self, location): self.location = location
+            def __init__(self, location):
+                self.location = location
+
         module.FileIO, module.InputFile, module.OutputFile = FileIO, InputFile, OutputFile
         arrow = types.ModuleType("pyiceberg.io.pyarrow")
+
         class PyArrowFileIO(FileIO):
             def _initialize_fs(self, scheme, netloc=None):
                 raise NotImplementedError("unit-test Arrow filesystem base")
+
         arrow.PyArrowFileIO = PyArrowFileIO
         module.__path__ = []
         monkeypatch.setitem(sys.modules, "pyiceberg.io.pyarrow", arrow)
@@ -52,10 +62,14 @@ def http_module(monkeypatch):
 def server(monkeypatch):
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
-    state = types.SimpleNamespace(objects={}, requests=[], ignore_range=False, wrong_range=False,
-                                  required_token=None, redirect=False)
+    state = types.SimpleNamespace(
+        objects={}, requests=[], ignore_range=False, wrong_range=False, required_token=None, redirect=False
+    )
+
     class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *args): pass
+        def log_message(self, *args):
+            pass
+
         def begin(self):
             state.requests.append((self.command, self.path, dict(self.headers)))
             if state.required_token and self.headers.get("Authorization") != "Bearer " + state.required_token:
@@ -68,16 +82,20 @@ def server(monkeypatch):
                 self.end_headers()
                 return False
             return True
+
         def do_HEAD(self):
-            if not self.begin(): return
+            if not self.begin():
+                return
             if self.path not in state.objects:
                 self.send_error(404)
                 return
             self.send_response(200)
             self.send_header("Content-Length", str(len(state.objects[self.path])))
             self.end_headers()
+
         def do_PUT(self):
-            if not self.begin(): return
+            if not self.begin():
+                return
             if self.headers.get("If-None-Match") == "*" and self.path in state.objects:
                 self.send_error(412)
                 return
@@ -86,8 +104,10 @@ def server(monkeypatch):
             self.send_response(201)
             self.send_header("Content-Length", "0")
             self.end_headers()
+
         def do_GET(self):
-            if not self.begin(): return
+            if not self.begin():
+                return
             if self.path not in state.objects:
                 self.send_error(404)
                 return
@@ -96,7 +116,7 @@ def server(monkeypatch):
             if match and not state.ignore_range:
                 start, end = map(int, match.groups())
                 total = len(body)
-                body = body[start:end+1]
+                body = body[start : end + 1]
                 self.send_response(206)
                 self.send_header("Content-Range", f"bytes {start}-{end}/{total + int(state.wrong_range)}")
             else:
@@ -107,8 +127,10 @@ def server(monkeypatch):
                 self.wfile.write(body)
             except (BrokenPipeError, ConnectionResetError):
                 pass
+
         def do_DELETE(self):
-            if not self.begin(): return
+            if not self.begin():
+                return
             if self.path not in state.objects:
                 self.send_error(404)
                 return
@@ -116,9 +138,10 @@ def server(monkeypatch):
             self.send_response(204)
             self.send_header("Content-Length", "0")
             self.end_headers()
+
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     httpd.daemon_threads = True
-    worker = threading.Thread(target=lambda: httpd.serve_forever(poll_interval=.01), daemon=True)
+    worker = threading.Thread(target=lambda: httpd.serve_forever(poll_interval=0.01), daemon=True)
     worker.start()
     state.url = f"http://127.0.0.1:{httpd.server_address[1]}"
     yield state
@@ -140,7 +163,7 @@ def test_real_http_streaming_roundtrip_and_delete(http_module, server, tmp_path)
     assert not output.exists()
     with output.create() as stream:
         for i in range(0, len(payload), 8192):
-            stream.write(payload[i:i+8192])
+            stream.write(payload[i : i + 8192])
         assert not isinstance(stream.spool, io.BytesIO)
         assert stream.tell() == len(payload)
     remote = fileio.new_input(uri)
@@ -154,9 +177,9 @@ def test_real_http_streaming_roundtrip_and_delete(http_module, server, tmp_path)
             result.extend(block)
         assert bytes(result) == payload
         assert len(stream.cache) <= http_module.BLOCK
-    gets = [h for method,p,h in server.requests if method == "GET"]
+    gets = [h for method, p, h in server.requests if method == "GET"]
     assert gets and all("Range" in h for h in gets)
-    assert all(h.get("Authorization") == "Bearer test-secret" for method,p,h in server.requests)
+    assert all(h.get("Authorization") == "Bearer test-secret" for method, p, h in server.requests)
     fileio.delete(uri)
     assert not remote.exists()
     assert list(tmp_path.iterdir()) == []
@@ -166,13 +189,14 @@ def test_auth_not_sent_cross_origin(http_module, server):
     server.objects["/x"] = b"data"
     fileio = make_io(http_module, server, **{"http.auth-origins": "https://trusted.other.example"})
     assert len(fileio.new_input(server.url + "/x")) == 4
-    assert all("Authorization" not in h for method,p,h in server.requests)
+    assert all("Authorization" not in h for method, p, h in server.requests)
 
 
 def test_allowlisted_origin_receives_auth(http_module, server):
     server.objects["/x"] = b"data"
-    fileio = http_module.HttpFileIO({"uri":"https://catalog.other", "token":"allowlisted",
-                                    "http.auth-origins":server.url})
+    fileio = http_module.HttpFileIO(
+        {"uri": "https://catalog.other", "token": "allowlisted", "http.auth-origins": server.url}
+    )
     assert len(fileio.new_input(server.url + "/x")) == 4
     assert server.requests[0][2]["Authorization"] == "Bearer allowlisted"
 
@@ -190,7 +214,7 @@ def test_failed_context_does_not_upload(http_module, server):
         with output.create() as stream:
             stream.write(b"partial")
             raise RuntimeError("source interrupted")
-    assert "/x" not in server.objects and all(method != "PUT" for method,p,h in server.requests)
+    assert "/x" not in server.objects and all(method != "PUT" for method, p, h in server.requests)
 
 
 def test_no_overwrite_existing(http_module, server):

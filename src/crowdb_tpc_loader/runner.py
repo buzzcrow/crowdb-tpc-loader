@@ -1,4 +1,5 @@
 """Run orchestration with injected boundaries for deterministic failure-path tests."""
+
 from __future__ import annotations
 
 import shutil
@@ -16,9 +17,16 @@ from .models import Options
 from .report import RunReport
 from .schemas import inventory
 from .security import Redactor
-from .transfers import probe_fileio
-from .util import (cleanup_owned, create_work_directory, directory_lock, ensure_space,
-                   estimated_disk_bytes, format_bytes, mark_owned, prepare_generate_directory)
+from .util import (
+    cleanup_owned,
+    create_work_directory,
+    directory_lock,
+    ensure_space,
+    estimated_disk_bytes,
+    format_bytes,
+    mark_owned,
+    prepare_generate_directory,
+)
 from .validation import validate_dataset
 
 
@@ -31,13 +39,22 @@ class RunResult:
 
 class Runner:
     def __init__(
-        self, options: Options, emit: Callable[[str], None], redactor: Redactor,
-        generator_factory: Callable = make_generator, backend_factory: Callable = IcebergBackend,
-        validator: Callable = validate_dataset, prober: Callable = probe_fileio,
+        self,
+        options: Options,
+        emit: Callable[[str], None],
+        redactor: Redactor,
+        generator_factory: Callable = make_generator,
+        backend_factory: Callable = IcebergBackend,
+        validator: Callable = validate_dataset,
+        prober: Callable | None = None,
         table_loader: Callable = load_tables,
     ):
         self.options, self.emit, self.redactor = options, emit, redactor
         self.generator_factory, self.backend_factory = generator_factory, backend_factory
+        if prober is None:
+            from .transfers import probe_fileio
+
+            prober = probe_fileio
         self.validator, self.prober, self.table_loader = validator, prober, table_loader
         self.report = RunReport(options, uuid.uuid4().hex, redactor)
         self.work: Path | None = None
@@ -71,8 +88,9 @@ class Runner:
                 existing = backend.existing(tuple(inventory(options.benchmark)))
                 if existing and options.on_exists == "error":
                     raise ExistingTablesError(
-                        "Target tables already exist: " + ", ".join(sorted(existing)) +
-                        ". No generation or upload was started. Use a fresh namespace or --on-exists skip."
+                        "Target tables already exist: "
+                        + ", ".join(sorted(existing))
+                        + ". No generation or upload was started. Use a fresh namespace or --on-exists skip."
                     )
                 if existing:
                     report.data["warnings"].append(
@@ -80,12 +98,16 @@ class Runner:
                         "--on-exists skip is not resume/repair and does not prove their scale factor or completeness."
                     )
                 for name in existing:
-                    report.table(name).update({"status": "skipped", "reason": "existing table left unchanged"})
+                    report.table(name).update(
+                        {"status": "skipped", "reason": "existing table left unchanged"}
+                    )
                 if len(existing) == len(inventory(options.benchmark)):
                     self._report_location(Path.cwd() / f"crowdb-tpc-{run_id}.json")
                     report.data["phase"] = "complete"
                     report.finish("succeeded")
-                    self.emit("All target tables exist: skipped without generation, namespace changes or upload")
+                    self.emit(
+                        "All target tables exist: skipped without generation, namespace changes or upload"
+                    )
                     return self._result(0)
                 self.work = create_work_directory(options.work_dir, run_id)
                 mark_owned(self.work, run_id)
@@ -110,9 +132,14 @@ class Runner:
                 report.save()
                 need = estimated_disk_bytes(options.benchmark, options.sf)
                 free = ensure_space(self.work, need)
-                report.data["staging_space"] = {"free_bytes": free, "estimated_required_bytes": need,
-                                                "estimate_is_guarantee": False}
-                self.emit(f"Staging: {self.work}; free {format_bytes(free)}, estimated need {format_bytes(need)}")
+                report.data["staging_space"] = {
+                    "free_bytes": free,
+                    "estimated_required_bytes": need,
+                    "estimate_is_guarantee": False,
+                }
+                self.emit(
+                    f"Staging: {self.work}; free {format_bytes(free)}, estimated need {format_bytes(need)}"
+                )
                 scratch = self.work / ".scratch"
                 scratch.mkdir()
                 generator = self.generator_factory(options, self.emit, self.redactor)
@@ -124,7 +151,7 @@ class Runner:
                         backend.set_staging(scratch)
                     backend.ensure_namespace()
                     if getattr(backend, "probe_cleanup_supported", True):
-                        self.prober(backend, scratch, report, options.upload_buffer_mib * 1024 ** 2, self.emit)
+                        self.prober(backend, scratch, report, options.upload_buffer_mib * 1024**2, self.emit)
                     else:
                         self.emit("CrowDB FileIO: uploads start with the first table")
                 report.phase("generating")
@@ -141,8 +168,14 @@ class Runner:
                         row["status"] = "succeeded"
                 else:
                     report.phase("loading")
-                    self.table_loader(backend, tables, report, options.upload_buffer_mib * 1024 ** 2,
-                                      self.emit, upload_workers=options.upload_workers)
+                    self.table_loader(
+                        backend,
+                        tables,
+                        report,
+                        options.upload_buffer_mib * 1024**2,
+                        self.emit,
+                        upload_workers=options.upload_workers,
+                    )
                 generator.close()
                 generator = None
                 if not scratch.is_symlink():
@@ -170,7 +203,9 @@ class Runner:
                 elif row["status"] in {"creating", "uploading"}:
                     row["status"] = "failed"
                     row["error"] = "Run interrupted"
-            self._safe_finish("interrupted", "Run interrupted; staging and any uncertain remote files were retained")
+            self._safe_finish(
+                "interrupted", "Run interrupted; staging and any uncertain remote files were retained"
+            )
             return self._result(130)
         except Exception as exc:
             code = exc.exit_code if isinstance(exc, LoaderError) else 1
@@ -186,7 +221,9 @@ class Runner:
     def _safe_finish(self, status: str, error: str | None = None) -> None:
         try:
             if not self.report.paths:
-                fallback = self.options.report_file or Path.cwd() / f"crowdb-tpc-{self.report.data['run_id']}.json"
+                fallback = (
+                    self.options.report_file or Path.cwd() / f"crowdb-tpc-{self.report.data['run_id']}.json"
+                )
                 if not fallback.exists() and not fallback.is_symlink():
                     self.external_report = fallback.absolute()
                     self.report.paths.append(self.external_report)

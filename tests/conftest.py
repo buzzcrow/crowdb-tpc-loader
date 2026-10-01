@@ -1,9 +1,8 @@
 """Offline doubles are explicit; they never masquerade as real Parquet/Iceberg tests."""
+
 from __future__ import annotations
 
-from dataclasses import replace
 from decimal import Decimal
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -25,9 +24,16 @@ class FakeSchema(list):
 
 @pytest.fixture
 def options(tmp_path):
-    return Options("load", "tpch", Decimal("1"), work_dir=tmp_path / "staging",
-                   catalog_uri="https://catalog.example", token="top-secret-credential",
-                   namespace=("test",), report_file=tmp_path / "report.json")
+    return Options(
+        "load",
+        "tpch",
+        Decimal("1"),
+        work_dir=tmp_path / "staging",
+        catalog_uri="https://catalog.example",
+        token="top-secret-credential",
+        namespace=("test",),
+        report_file=tmp_path / "report.json",
+    )
 
 
 @pytest.fixture
@@ -55,6 +61,7 @@ def make_data(tmp_path):
             path.write_bytes(b"THIS IS TEST BYTES, NOT PARQUET:" + name.encode())
             result[name] = TableData(name, (ParquetPart(path, rows, path.stat().st_size, schema),), schema)
         return result
+
     return create
 
 
@@ -64,18 +71,24 @@ def fake_generator_factory(make_data):
         prepared = False
         generated = False
         closed = False
+
         def __init__(self, options, emit, redactor):
             self.options = options
+
         def prepare(self, scratch):
             self.prepared = True
             return Generated("explicit-test-double", "0")
+
         def generate(self, output, scratch):
             self.generated = True
             make_data(inventory(self.options.benchmark), root=output)
             return Generated("explicit-test-double", "0")
+
         def close(self):
             self.closed = True
+
     return Generator
+
 
 @pytest.fixture
 def fake_backend():
@@ -94,15 +107,20 @@ def fake_backend():
             self.commit_visible = True
             self.read_error = None
             self.concurrent_skip = set()
+
         def connect(self):
             self.calls.append("connect")
+
         def existing(self, names):
             self.calls.append("existing")
             return set(names) & self.existing_names
+
         def ensure_namespace(self):
             self.calls.append("namespace")
+
         def set_staging(self, scratch):
             self.calls.append("set_staging")
+
         def create(self, data, run_id, generator):
             self.calls.append("create:" + data.name)
             if data.name in self.concurrent_skip:
@@ -111,32 +129,45 @@ def fake_backend():
             table = SimpleNamespace(
                 metadata=SimpleNamespace(table_uuid=f"uuid-{name}", properties={}),
                 location_provider=lambda: SimpleNamespace(
-                    new_data_location=lambda filename: f"s3://unit-test/{name}/data/{filename}"),
-                name=lambda: ("test", name))
+                    new_data_location=lambda filename: f"s3://unit-test/{name}/data/{filename}"
+                ),
+                name=lambda: ("test", name),
+            )
             self.tables[name] = table
             self.data[name] = data
             self.states[name] = Inventory(None, {}, f"uuid-{name}")
             return table
+
         def validate_import(self, table, uris):
             self.calls.append("validate:" + table.name()[-1])
             assert all(uri.startswith("s3://") for uri in uris)
+
         def assert_empty(self, table):
             self.calls.append("empty:" + table.name()[-1])
             return table
+
         def register(self, table, uris, run_id):
             name = table.name()[-1]
             self.calls.append("register:" + name)
             if self.commit_visible:
-                self.states[name] = Inventory(123,
-                    {uri:RemotePart(uri, part.rows, part.size_bytes) for uri, part in zip(uris, self.data[name].parts)},
-                    f"uuid-{name}")
+                self.states[name] = Inventory(
+                    123,
+                    {
+                        uri: RemotePart(uri, part.rows, part.size_bytes)
+                        for uri, part in zip(uris, self.data[name].parts)
+                    },
+                    f"uuid-{name}",
+                )
             if self.commit_error:
                 raise self.commit_error
+
         def reload_inventory(self, table):
             self.calls.append("reload:" + table.name()[-1])
             if self.read_error:
                 raise self.read_error
             return table, self.states[table.name()[-1]]
+
         def definite_rejection(self, error):
             return isinstance(error, PermissionError)
+
     return Backend()

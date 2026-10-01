@@ -1,4 +1,5 @@
 """Parquet footer validation; table data is never materialized in Python."""
+
 from __future__ import annotations
 
 import re
@@ -16,7 +17,9 @@ def require_arrow():
         import pyarrow as pa
         import pyarrow.parquet as pq
     except ImportError as exc:
-        raise ValidationError("PyArrow is required. Install the package with its declared dependencies.") from exc
+        raise ValidationError(
+            "PyArrow is required. Install the package with its declared dependencies."
+        ) from exc
     return pa, pq
 
 
@@ -32,7 +35,7 @@ def compatible_kind(dtype: Any, kind: str) -> bool:
         return pa.types.is_date32(dtype)
     if kind.startswith("D") and "_" in kind:
         precision, scale = map(int, kind[1:].split("_"))
-        return (pa.types.is_decimal(dtype) and dtype.precision == precision and dtype.scale == scale)
+        return pa.types.is_decimal(dtype) and dtype.precision == precision and dtype.scale == scale
     raise ValueError(f"Unknown type descriptor: {kind}")
 
 
@@ -58,7 +61,9 @@ def identify_table(path: Path, root: Path, names: tuple[str, ...]) -> str:
     relative = path.relative_to(root)
     directory_match = [name for name in names if name in relative.parts[:-1]]
     # Recognizes e.g. lineitem.parquet, lineitem.1.parquet, lineitem_0001.parquet.
-    filename_match = [name for name in names if re.fullmatch(re.escape(name) + r"(?:[._-]\d+)*\.parquet", path.name)]
+    filename_match = [
+        name for name in names if re.fullmatch(re.escape(name) + r"(?:[._-]\d+)*\.parquet", path.name)
+    ]
     # "part-00000" is a generic shard filename, not the TPCH `part` table,
     # when the enclosing directory already identifies a different table.
     if len(directory_match) == 1 and re.fullmatch(r"part[._-]\d+\.parquet", path.name):
@@ -76,6 +81,7 @@ def discover_parts(root: Path, benchmark: str) -> dict[str, list[Path]]:
     seen: set[tuple[int, int]] = set()
     # os.walk defaults to not following symbolic-link directories; reject any explicitly.
     import os
+
     for base, dirs, files in os.walk(root, followlinks=False):
         for dirname in dirs:
             if (Path(base) / dirname).is_symlink():
@@ -94,14 +100,21 @@ def discover_parts(root: Path, benchmark: str) -> dict[str, list[Path]]:
             found[identify_table(path, root, names)].append(path)
     missing = [name for name, paths in found.items() if not paths]
     if missing:
-        raise ValidationError("Incomplete dataset; tables have no Parquet file (including empty tables): " + ", ".join(missing))
+        raise ValidationError(
+            "Incomplete dataset; tables have no Parquet file (including empty tables): " + ", ".join(missing)
+        )
     return {name: sorted(paths) for name, paths in found.items()}
 
 
 def validate_tpch_counts(tables: dict[str, TableData], sf: Decimal) -> None:
     expected = {
-        "region": 5, "nation": 25, "supplier": int(10_000 * sf), "customer": int(150_000 * sf),
-        "part": int(200_000 * sf), "partsupp": 4 * int(200_000 * sf), "orders": int(1_500_000 * sf),
+        "region": 5,
+        "nation": 25,
+        "supplier": int(10_000 * sf),
+        "customer": int(150_000 * sf),
+        "part": int(200_000 * sf),
+        "partsupp": 4 * int(200_000 * sf),
+        "orders": int(1_500_000 * sf),
     }
     if sf == 1:
         expected["lineitem"] = 6_001_215
@@ -136,7 +149,9 @@ def validate_dataset(
                 raise ValidationError(f"{name}: cannot read Parquet footer for {path.name}: {exc}") from exc
             validate_schema(schema, definitions[name], name)
             if canonical is not None and not schema.equals(canonical, check_metadata=False):
-                raise ValidationError(f"{name}: incompatible Parquet schemas across parts; first mismatch: {path.name}")
+                raise ValidationError(
+                    f"{name}: incompatible Parquet schemas across parts; first mismatch: {path.name}"
+                )
             canonical = schema
             if footer.num_rows < 0:
                 raise ValidationError(f"{name}: invalid negative footer row count")
@@ -145,7 +160,9 @@ def validate_dataset(
         table = TableData(name, tuple(validated), canonical)
         source_count = generated.source_row_counts.get(name)
         if source_count is not None and source_count != table.rows:
-            raise ValidationError(f"{name}: source database has {source_count:,} rows, exported footer reports {table.rows:,}")
+            raise ValidationError(
+                f"{name}: source database has {source_count:,} rows, exported footer reports {table.rows:,}"
+            )
         result[name] = table
         emit(f"Validate {name}: {len(validated)} file(s), {table.rows:,} rows, {table.size_bytes:,} bytes")
     if benchmark == "tpch":
