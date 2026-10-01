@@ -53,11 +53,11 @@ python -m build
 python -m twine check dist/*
 ```
 
-CI runs lint, format, tests, and package checks. Publishing is manual through [the PyPI workflow](.github/workflows/publish.yml) after creating a matching Git tag and configuring PyPI Trusted Publishing. See [testing](docs/TESTING.md) for optional real generator and CROWDB runs. The package is Apache-2.0; third-party generators and libraries keep their own licenses.
+CI runs lint, format, tests, and package checks. Publishing is manual through [the PyPI workflow](.github/workflows/publish.yml) from a `release/v<version>` branch after configuring PyPI Trusted Publishing. See [testing](docs/TESTING.md) for optional real generator and CROWDB runs. The package is Apache-2.0; third-party generators and libraries keep their own licenses.
 
 To publish `0.1.0`:
 
 1. In PyPI, create a pending Trusted Publisher for project `crowdb-tpc-loader`: GitHub owner `buzzcrow`, repository `crowdb-tpc-loader`, workflow `publish.yml`, environment `pypi`. Create the `pypi` environment in GitHub.
-2. After CI is green on the release commit, create and push tag `v0.1.0`.
-3. In GitHub Actions, run **Publish to PyPI** manually with input `tag=v0.1.0`. It verifies the tag, reruns checks, builds distributions, and publishes through OIDC. No PyPI API token is stored in GitHub.
+2. After CI is green, create and push branch `release/v0.1.0` from the commit to publish.
+3. In GitHub Actions, open **Publish to PyPI**, click **Run workflow**, select branch `release/v0.1.0`, then run it. The workflow verifies the branch name against the package version, reruns checks, builds distributions, and publishes through OIDC. No PyPI API token is stored in GitHub.
 4. Confirm the files on [PyPI](https://pypi.org/project/crowdb-tpc-loader/), then test `python -m pip install --no-cache-dir crowdb-tpc-loader==0.1.0` in a clean environment and run `crowdb-tpc-loader --version`.
