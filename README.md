@@ -7,7 +7,7 @@ Generate TPC-H or TPC-DS Parquet, upload it to CROWDB Iceberg, and register comp
 
 ## Install
 
-Python 3.10–3.12 is required. After the first PyPI release:
+Python 3.10–3.12 is required. Install the published package from PyPI:
 
 ```sh
 python3 -m venv .venv
@@ -15,7 +15,7 @@ python3 -m venv .venv
 python -m pip install crowdb-tpc-loader
 ```
 
-Until PyPI publication, install from a checkout with `python -m pip install --only-binary=:all: -e .`. The first TPC-H run may download `tpchgen-cli` 3.0.0; TPC-DS may download DuckDB's `tpcds` extension. Use `--no-download` and provide these components ahead of time for an offline run.
+For local development, install from a checkout with `python -m pip install --only-binary=:all: -e .`. The first TPC-H run may download `tpchgen-cli` 3.0.0; TPC-DS may download DuckDB's `tpcds` extension. Use `--no-download` and provide these components ahead of time for an offline run.
 
 ## Load
 
@@ -55,9 +55,9 @@ python -m twine check dist/*
 
 CI runs lint, format, tests, and package checks. Publishing is manual through [the PyPI workflow](.github/workflows/publish.yml) from a `release/v<version>` branch after configuring PyPI Trusted Publishing. See [testing](docs/TESTING.md) for optional real generator and CROWDB runs. The package is Apache-2.0; third-party generators and libraries keep their own licenses.
 
-To publish `0.1.0`:
+To publish a later version:
 
-1. In PyPI, create a pending Trusted Publisher for project `crowdb-tpc-loader`: GitHub owner `buzzcrow`, repository `crowdb-tpc-loader`, workflow `publish.yml`, environment `pypi`. Create the `pypi` environment in GitHub.
-2. After CI is green, create and push branch `release/v0.1.0` from the commit to publish.
-3. In GitHub Actions, open **Publish to PyPI**, click **Run workflow**, select branch `release/v0.1.0`, then run it. The workflow verifies the branch name against the package version, reruns checks, builds distributions, and publishes through OIDC. No PyPI API token is stored in GitHub.
-4. Confirm the files on [PyPI](https://pypi.org/project/crowdb-tpc-loader/), then test `python -m pip install --no-cache-dir crowdb-tpc-loader==0.1.0` in a clean environment and run `crowdb-tpc-loader --version`.
+1. Keep the existing PyPI Trusted Publisher for project `crowdb-tpc-loader`: GitHub owner `buzzcrow`, repository `crowdb-tpc-loader`, workflow `publish.yml`, environment `pypi`. Keep the matching `pypi` environment in GitHub.
+2. Bump the version in `pyproject.toml` and `src/crowdb_tpc_loader/__init__.py`, then run CI. Create and push `release/v<version>` from the commit to publish.
+3. In GitHub Actions, open **Publish to PyPI**, click **Run workflow**, select that release branch, then run it. The workflow verifies the branch name against the package version, reruns checks, builds distributions, and publishes through OIDC. No PyPI API token is stored in GitHub.
+4. Confirm the files on [PyPI](https://pypi.org/project/crowdb-tpc-loader/), then test `python -m pip install --no-cache-dir crowdb-tpc-loader==<version>` in a clean environment and run `crowdb-tpc-loader --version`.
