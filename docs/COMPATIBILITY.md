@@ -6,7 +6,7 @@ The package requires Python 3.10–3.12, PyArrow `>=18,<24`, PyIceberg `>=0.10,<
 
 Before generation, the loader checks catalog access, existing tables, namespace creation, and a staged FileIO write probe where cleanup is supported. CROWDB's native FileIO has no remote file delete, so the first real table upload acts as its write test. The entire generated dataset passes schema and footer checks before any benchmark table is created.
 
-The catalog can return transient HTTP 503 when its bounded operation capacity is busy. Table creation retries up to six attempts with short backoff. If a retry finds a table created by an earlier attempt in the same run, it verifies the run ID before continuing. Registration (`add_files`) is never blindly retried after an ambiguous response; the loader reads the current snapshot to reconcile the outcome. Keep the JSON report for [failure recovery](RECOVERY.md).
+Table creation retries transient service-unavailable responses with short backoff. If a retry finds a table created by an earlier attempt in the same run, it verifies the run ID before continuing. Registration (`add_files`) is never blindly retried after an ambiguous response; the loader reads the current snapshot to reconcile the outcome. Keep the JSON report for [failure recovery](RECOVERY.md).
 
 Each worker owns a separate Catalog client and one table. Eight workers run by default; `--upload-workers` accepts 1–24. Files within a table upload in sequence, then that table commits once. Other tables can upload or commit at the same time. This can expose server backpressure; choose fewer workers for a small deployment if bounded retries are still exhausted. A failure in one table does not roll back another table's successful snapshot.
 

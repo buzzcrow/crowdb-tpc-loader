@@ -25,7 +25,7 @@ Start `crowdb/crowdb-iceberg:latest` and export the `ICEBERG_URI` and `ICEBERG_T
 crowdb-tpc-loader load --benchmark tpch --sf 0.01 \
   --namespace tpch_demo --report-file ./tpch-demo.json
 crowdb-tpc-loader load --benchmark tpcds --sf 0.01 \
-  --namespace tpcds_demo --report-file ./tpcds-demo.json
+  --namespace tpcds_demo --upload-workers 4 --report-file ./tpcds-demo.json
 ```
 
 The loader validates the entire generated dataset before creating a table. It writes different tables concurrently, with 8 workers by default. Use `--upload-workers N` to control concurrent Iceberg table writes (1–24). Each table's files are uploaded and registered in one snapshot, with a durable report checkpoint before each remote side effect. One table's failure does not roll back tables that already succeeded. The report identifies committed, unregistered, and uncertain files; see [recovery](docs/RECOVERY.md) before retrying. An existing table stops the default load; `--on-exists skip` leaves it unchanged without verifying it.
@@ -40,7 +40,7 @@ Run the read-only verifier from a checkout after loading:
 python scripts/verify_crowdb.py ./tpch-demo.json --require-complete --iceberg-scan
 ```
 
-With DuckDB's `iceberg` and `httpfs` extensions, attach the REST Catalog using its token and query `tpch_demo.region` or run TPC-H Q1 against `tpch_demo.lineitem`. The [website guide](https://crowdb.dev/docs/tpc-loader/) has the SQL. A published `latest` image and the local DuckDB 1.5.6 CLI passed an SF 0.01 TPC-H import, independent table verification, and Q1 read on October 1, 2026. This is an integration check, not a performance result. See [compatibility](docs/COMPATIBILITY.md) and the [test record](docs/TEST_REPORT.md).
+With DuckDB's `iceberg` and `httpfs` extensions, attach the REST Catalog using its token and query `tpch_demo.region` or run TPC-H Q1 against `tpch_demo.lineitem`. The [website guide](https://crowdb.dev/docs/tpc-loader/) has the SQL. At SF 0.01, DuckDB 1.5.6 ran all 22 TPC-H and 99 TPC-DS queries against the published `latest` container; results matched DuckDB reading the same local Parquet. This is a development check, not a benchmark result. See [compatibility](docs/COMPATIBILITY.md) and the [test record](docs/TEST_REPORT.md).
 
 ## Develop and publish
 
