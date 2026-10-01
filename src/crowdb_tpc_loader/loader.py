@@ -26,6 +26,13 @@ def verify_inventory(state: Inventory, expected: dict[str, tuple[int, int]]) -> 
             raise LoadError("Committed manifest row count/file size differs from the validated Parquet footer")
 
 
+def _timed_upload(uploader: Callable, table: Any, part: Any, uri: str,
+                  buffer_size: int, emit: Callable[[str], None]) -> tuple[str, float]:
+    started = time.monotonic()
+    digest = uploader(table, part, uri, buffer_size, emit)
+    return digest, round(time.monotonic() - started, 3)
+
+
 def reconcile(
     backend: Any, table: Any, expected: dict[str, tuple[int, int]], row: dict,
     report: RunReport, original_error: Exception | None, emit: Callable[[str], None],
@@ -115,7 +122,9 @@ def load_tables(
                 # Crash-safe journal entry BEFORE remotely creating any object.
                 report.save()
                 emit(f"Upload {name}: part {index + 1}/{len(data.parts)}")
-                item["sha256"] = uploader(table, part, uri, buffer_size, emit)
+                item["sha256"], item["upload_duration_seconds"] = _timed_upload(
+                    uploader, table, part, uri, buffer_size, emit,
+                )
                 item["state"] = "uploaded_unregistered"
                 report.save()
             _commit_table(backend, table, expected, row, report, run_id, name, data.rows, started, emit)
@@ -187,7 +196,9 @@ def _load_parallel(backend: Any, tables: dict[str, TableData], report: RunReport
                     item.update(remote_uri=uri, state="upload_started")
                     report.save()  # Journal the remote URI before scheduling its upload.
                     emit(f"Upload {name}: part {index + 1}/{len(data.parts)}")
-                    futures[pool.submit(uploader, table, part, uri, buffer_size, emit)] = (row, item, name)
+                    futures[pool.submit(_timed_upload, uploader, table, part, uri, buffer_size, emit)] = (
+                        row, item, name,
+                    )
                 prepared.append((name, data, table, row, expected, started))
             except Exception as exc:
                 row.update(status="failed", error=str(exc),
@@ -198,7 +209,7 @@ def _load_parallel(backend: Any, tables: dict[str, TableData], report: RunReport
         for future in as_completed(futures):
             row, item, name = futures[future]
             try:
-                item["sha256"] = future.result()
+                item["sha256"], item["upload_duration_seconds"] = future.result()
                 item["state"] = "uploaded_unregistered"
             except Exception as exc:
                 row.update(status="failed", error=str(exc))

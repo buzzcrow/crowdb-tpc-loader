@@ -6,10 +6,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .backend import data_location
+from .crowdb_fileio import CrowdbFileIO
 from .errors import CompatibilityError, LoadError
 from .models import ParquetPart
 from .report import RunReport
-from .util import copy_stream, format_bytes, remote_uri
+from .util import copy_stream, format_bytes, hash_stream, remote_uri
 
 
 def upload_part(
@@ -25,10 +26,19 @@ def upload_part(
             emit(f"Upload {part.path.name}: {format_bytes(total)} / {format_bytes(part.size_bytes)}")
             last_progress = now
 
-    output = table.io.new_output(uri)
     try:
-        with part.path.open("rb") as source, output.create(overwrite=False) as target:
-            count, digest = copy_stream(source, target, buffer_size, progress)
+        if isinstance(table.io, CrowdbFileIO) and uri.startswith("s3://"):
+            from .s3_upload import upload_file
+
+            with part.path.open("rb") as source:
+                count, digest = hash_stream(source, buffer_size)
+            if count != part.size_bytes:
+                raise LoadError("Local Parquet file changed size after validation; uploaded object will not be registered")
+            upload_file(table.io.properties, uri, part.path, count, progress)
+        else:
+            output = table.io.new_output(uri)
+            with part.path.open("rb") as source, output.create(overwrite=False) as target:
+                count, digest = copy_stream(source, target, buffer_size, progress)
     except FileExistsError as exc:
         raise LoadError("Unique target data URI unexpectedly already exists; refusing to overwrite") from exc
     if count != part.size_bytes:
