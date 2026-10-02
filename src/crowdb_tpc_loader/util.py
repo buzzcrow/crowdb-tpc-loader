@@ -169,7 +169,7 @@ def copy_stream(
     if buffer_size <= 0:
         raise ValueError("buffer_size must be positive")
     total = 0
-    digest = hashlib.sha256()
+    digest = hashlib.md5()
     while chunk := source.read(buffer_size):
         digest.update(chunk)
         view = memoryview(chunk)
@@ -187,10 +187,10 @@ def copy_stream(
     return total, digest.hexdigest()
 
 
-def hash_stream(source: BinaryIO, buffer_size: int) -> tuple[int, str]:
+def hash_stream(source: BinaryIO, buffer_size: int, algorithm: str = "md5") -> tuple[int, str]:
     if buffer_size <= 0:
         raise ValueError("buffer_size must be positive")
-    digest = hashlib.sha256()
+    digest = hashlib.new(algorithm)
     total = 0
     while chunk := source.read(buffer_size):
         digest.update(chunk)

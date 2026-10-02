@@ -3,15 +3,23 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 from .backend import data_location
-from .crowdb_fileio import CrowdbFileIO
+from pyiceberg.io.pyarrow import PyArrowFileIO
 from .errors import CompatibilityError, LoadError
 from .models import ParquetPart
 from .report import RunReport
-from .util import copy_stream, format_bytes, hash_stream, remote_uri
+from .util import copy_stream, format_bytes, remote_uri
+
+
+@dataclass(frozen=True)
+class UploadResult:
+    md5: str
+    md5_seconds: float | None
+    transfer_seconds: float
 
 
 def upload_part(
@@ -20,7 +28,8 @@ def upload_part(
     uri: str,
     buffer_size: int,
     emit: Callable[[str], None],
-) -> str:
+    transport=None,
+) -> UploadResult:
     remote_uri(uri)
     last_progress = time.monotonic()
 
@@ -31,17 +40,38 @@ def upload_part(
             emit(f"Upload {part.path.name}: {format_bytes(total)} / {format_bytes(part.size_bytes)}")
             last_progress = now
 
+    md5_seconds = None
+    transfer_started = time.monotonic()
     try:
-        if isinstance(table.io, CrowdbFileIO) and uri.startswith("s3://"):
-            from .s3_upload import upload_file
+        if (
+            isinstance(table.io, PyArrowFileIO)
+            and all(
+                table.io.properties.get(key)
+                for key in ("s3.endpoint", "s3.access-key-id", "s3.secret-access-key")
+            )
+            and uri.startswith("s3://")
+        ):
+            from .s3_upload import file_checksums, upload_file
 
-            with part.path.open("rb") as source:
-                count, digest = hash_stream(source, buffer_size)
+            hash_started = time.monotonic()
+            count, digest, part_digests = file_checksums(part.path, part.size_bytes, buffer_size)
+            md5_seconds = round(time.monotonic() - hash_started, 6)
             if count != part.size_bytes:
                 raise LoadError(
                     "Local Parquet file changed size after validation; uploaded object will not be registered"
                 )
-            upload_file(table.io.properties, uri, part.path, count, progress)
+            transfer_started = time.monotonic()
+            upload_file(
+                table.io.properties,
+                uri,
+                part.path,
+                count,
+                progress,
+                md5=digest,
+                part_digests=part_digests,
+                client=transport.bind(table.io.properties) if transport else None,
+                buffer_size=buffer_size,
+            )
         else:
             output = table.io.new_output(uri)
             with part.path.open("rb") as source, output.create(overwrite=False) as target:
@@ -52,7 +82,7 @@ def upload_part(
         raise LoadError(
             "Local Parquet file changed size after validation; uploaded object will not be registered"
         )
-    return digest
+    return UploadResult(digest, md5_seconds, round(time.monotonic() - transfer_started, 6))
 
 
 def probe_fileio(

@@ -124,11 +124,12 @@ def main(argv=None) -> int:
                     if decoded != part["row_count"]:
                         raise ValueError(f"{name}: decoded row count differs from the report")
                 if args.checksum:
-                    if not part.get("sha256"):
+                    algorithm = "md5" if part.get("md5") else "sha256"
+                    if not part.get(algorithm):
                         raise ValueError(f"{name}: this report has no upload checksum")
                     with remote.open() as stream:
-                        count, digest = hash_stream(stream, 8 * 1024**2)
-                    if count != part["size_bytes"] or digest != part["sha256"]:
+                        count, digest = hash_stream(stream, 8 * 1024**2, algorithm)
+                    if count != part["size_bytes"] or digest != part[algorithm]:
                         raise ValueError(f"{name}: remote checksum differs from uploaded bytes")
                 rows += part["row_count"]
             if args.iceberg_scan:

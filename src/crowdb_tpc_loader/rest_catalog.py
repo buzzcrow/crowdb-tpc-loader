@@ -36,13 +36,17 @@ def bound_session(session: Any, timeout: float) -> Any:
     return session
 
 
-def create_catalog(name: str, timeout: float, properties: dict[str, Any]):
+def create_catalog(name: str, timeout: float, properties: dict[str, Any], *, configured: bool = False):
     from pyiceberg.catalog.rest import RestCatalog
 
     if not callable(getattr(RestCatalog, "_create_session", None)):
         raise CompatibilityError("PyIceberg REST session API changed; cannot safely apply request timeouts")
 
     class BoundedRestCatalog(RestCatalog):
+        def _fetch_config(self):
+            if not configured:
+                super()._fetch_config()
+
         def _create_session(self):
             return bound_session(super()._create_session(), timeout)
 

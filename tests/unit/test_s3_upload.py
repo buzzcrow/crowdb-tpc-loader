@@ -1,6 +1,5 @@
 """CrowDB data files use direct PUT until frame-aligned MPU is needed."""
 
-from botocore.exceptions import ClientError
 import pytest
 
 from crowdb_tpc_loader import s3_upload
@@ -14,10 +13,11 @@ class FakeS3:
         self.completed = None
         self.aborted = False
 
+    def close(self):
+        pass
+
     def head_object(self, **_kwargs):
-        raise ClientError(
-            {"Error": {"Code": "404"}, "ResponseMetadata": {"HTTPStatusCode": 404}}, "HeadObject"
-        )
+        raise AssertionError("PUT must not issue HEAD")
 
     def put_object(self, **kwargs):
         self.puts.append((kwargs["ContentLength"], kwargs["IfNoneMatch"], kwargs["Body"].read(1)))
@@ -62,7 +62,17 @@ def test_multipart_parts_align_and_meet_64_mib_minimum(monkeypatch, tmp_path):
     with path.open("wb") as output:
         output.truncate(256 * s3_upload.MIB)
     progress = []
-    s3_upload.upload_file({}, "s3://bucket/data/large.parquet", path, path.stat().st_size, progress.append)
+    size, digest, part_digests = s3_upload.file_checksums(path, path.stat().st_size, 8 * s3_upload.MIB)
+    monkeypatch.setattr(s3_upload, "hash_stream", lambda *_: pytest.fail("checksum pass must not repeat"))
+    s3_upload.upload_file(
+        {},
+        "s3://bucket/data/large.parquet",
+        path,
+        size,
+        progress.append,
+        md5=digest,
+        part_digests=part_digests,
+    )
     assert len(client.parts) == 4
     assert sum(client.parts) == path.stat().st_size
     assert all(size >= 64 * s3_upload.MIB for size in client.parts[:-1])

@@ -4,7 +4,7 @@ The tool does not provide automatic resume, overwrite, drop, purge, or remote ga
 
 ## Reports and directories
 
-Keep the JSON report and working subdirectory shown in the console. A persistent `--report-file` path is the most reliable choice. Before uploading, the tool records the URI, run ID, and file status on disk. Before a commit, it marks the file `commit_unknown` and persists that state. If the process crashes between upload and commit, the unknown result will not be treated as definitely uncommitted.
+Keep the JSON report and working subdirectory shown in the console. A persistent `--report-file` path is the most reliable choice. Concurrent workers can share one durable report save. Before uploading, the tool records the URI, run ID, and file status on disk. Before a commit, it marks the file `commit_unknown` and persists that state. If the process crashes between upload and commit, the unknown result will not be treated as definitely uncommitted.
 
 Forced process termination, sudden power loss, and disk damage can still interrupt the latest checkpoint. Atomic replacement, fsync, and reports in two locations reduce this risk but do not provide a distributed transaction guarantee.
 

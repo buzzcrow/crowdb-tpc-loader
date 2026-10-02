@@ -22,15 +22,21 @@ For local development, install from a checkout with `python -m pip install --onl
 Start `crowdb/crowdb-iceberg:latest` and export the `ICEBERG_URI` and `ICEBERG_TOKEN` values printed by `docker exec <container> crowdb-monitor credentials show --format env`. Keep the token private. Use a new namespace for each run:
 
 ```sh
-crowdb-tpc-loader load --benchmark tpch --sf 0.01 \
+crowdb-tpc-loader load --benchmark tpch --sf 1 \
   --namespace tpch_demo --report-file ./tpch-demo.json
-crowdb-tpc-loader load --benchmark tpcds --sf 0.01 \
+crowdb-tpc-loader load --benchmark tpcds --sf 1 \
   --namespace tpcds_demo --upload-workers 4 --report-file ./tpcds-demo.json
 ```
 
-The loader validates the entire generated dataset before creating a table. It writes different tables concurrently, with 8 workers by default. Use `--upload-workers N` to control concurrent Iceberg table writes (1–24). Each table's files are uploaded and registered in one snapshot, with a durable report checkpoint before each remote side effect. One table's failure does not roll back tables that already succeeded. The report identifies committed, unregistered, and uncertain files; see [recovery](docs/RECOVERY.md) before retrying. An existing table stops the default load; `--on-exists skip` leaves it unchanged without verifying it.
+The loader validates the entire dataset before creating a table. TPC-H and TPC-DS use the same load flow. Different tables calculate MD5 and upload concurrently, with 8 workers by default. `--upload-workers N` selects 1–24 scheduled table writes; the S3 path caps active workers and connections at 8. One S3 client shares its connection pool, with each request signed using that table's catalog credentials. Files stream from disk without a whole-file buffer. S3 PUT and multipart parts send `Content-MD5`; file payload SHA256 is disabled while SigV4 authentication remains enabled. PUT uses `If-None-Match: *` without an existence HEAD.
 
-For local Parquet only, use `crowdb-tpc-loader generate --benchmark tpch --sf 0.01 --output-dir ./tpch-001`.
+Each table's files are registered in one snapshot. Required recovery records are durable before table creation, each upload and commit; concurrently ready records share one report save. Catalog configuration and namespace setup happen once per run. A successful commit reuses its returned table metadata, then verifies the snapshot's file inventory. Ambiguous commits are checked without repeating `add_files`. One table's failure does not roll back successful tables. See [recovery](docs/RECOVERY.md) before retrying. An existing table stops the default load; `--on-exists skip` leaves it unchanged without verifying it.
+
+After all tables are committed and verified, local staging is removed unless `--keep-files` is set. Failed and uncertain runs retain local files. Reports contain `md5`, `md5_duration_seconds`, `transfer_duration_seconds`, and the combined `upload_duration_seconds`. For non-S3 FileIO the checksum is calculated inline while copying, and separate checksum time is unavailable. Performance checks use SF=1; record generation, transfer and commit time separately.
+
+For local Parquet only, use `crowdb-tpc-loader generate --benchmark tpch --sf 1 --output-dir ./tpch-sf1`.
+
+Normal load does not download uploaded files to recheck MD5, decode every row, or execute SQL. The server validates `Content-MD5` during upload. PyIceberg reads Parquet footers for registration and small manifest metadata for commit verification.
 
 ## Check the result
 

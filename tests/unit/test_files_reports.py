@@ -177,7 +177,7 @@ def test_bounded_stream_with_partial_writes(partial):
     progress = []
     count, digest = util.copy_stream(Reader(value), target, 31, progress.append)
     assert count == len(value) and target.getvalue() == value
-    assert digest == hashlib.sha256(value).hexdigest()
+    assert digest == hashlib.md5(value).hexdigest()
     assert progress[-1] == len(value) and sorted(progress) == progress
     assert util.hash_stream(Reader(value), 31) == (count, digest)
 

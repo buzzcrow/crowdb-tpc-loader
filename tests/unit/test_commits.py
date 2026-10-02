@@ -237,7 +237,9 @@ def test_create_retries_transient_catalog_busy(options, redactor, make_data, mon
     from crowdb_tpc_loader import backend as backend_module
 
     data = make_data()["region"]
-    created = SimpleNamespace(metadata=SimpleNamespace(properties={"crowdb-tpc-loader.run-id": "run"}))
+    created = SimpleNamespace(
+        metadata=SimpleNamespace(properties={"crowdb-tpc-loader.run-id": "run"}, current_snapshot_id=None)
+    )
     attempts = []
 
     class Catalog:

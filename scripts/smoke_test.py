@@ -17,7 +17,7 @@ import uuid
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--benchmark", choices=("tpch", "tpcds"), required=True)
-    parser.add_argument("--sf", default="0.01")
+    parser.add_argument("--sf", default="1")
     parser.add_argument("--output-root", type=Path, default=Path("smoke-results"))
     parser.add_argument(
         "--load", action="store_true", help="explicitly enable writes to ICEBERG_URI using ICEBERG_TOKEN"

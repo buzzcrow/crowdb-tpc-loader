@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote, urlsplit
 
-from botocore.config import Config
 from botocore.exceptions import ClientError
-from botocore.session import get_session
+
+from .util import hash_stream
 
 
 MIB = 1024 * 1024
@@ -55,27 +57,40 @@ def _bucket_key(uri: str) -> tuple[str, str]:
 
 
 def _client(properties: dict):
-    required = ("s3.endpoint", "s3.access-key-id", "s3.secret-access-key")
-    if any(not properties.get(key) for key in required):
-        raise OSError("Catalog did not provide delegated S3 endpoint and credentials")
-    timeout = float(properties.get("http.timeout", 60))
-    return get_session().create_client(
-        "s3",
-        region_name=properties.get("client.region", properties.get("s3.region", "us-east-1")),
-        endpoint_url=properties["s3.endpoint"],
-        aws_access_key_id=properties["s3.access-key-id"],
-        aws_secret_access_key=properties["s3.secret-access-key"],
-        aws_session_token=properties.get("s3.session-token"),
-        config=Config(
-            signature_version="s3v4",
-            s3={"addressing_style": "path"},
-            request_checksum_calculation="when_required",
-            response_checksum_validation="when_required",
-            connect_timeout=timeout,
-            read_timeout=timeout,
-            retries={"mode": "standard", "max_attempts": 3},
-        ),
-    )
+    from .upload_client import UploadClient
+
+    transport = UploadClient(timeout=float(properties.get("http.timeout", 60)))
+    try:
+        return transport.bind(properties)
+    except BaseException:
+        transport.close()
+        raise
+
+
+def file_checksums(path: Path, size: int, buffer_size: int):
+    """Compute file and multipart checksums in the same bounded read pass."""
+    if buffer_size <= 0:
+        raise ValueError("buffer_size must be positive")
+    if size < MULTIPART_THRESHOLD:
+        with path.open("rb") as source:
+            count, digest = hash_stream(source, buffer_size)
+        return count, digest, None
+    whole = hashlib.md5()
+    count, part_bytes = 0, 0
+    part = hashlib.md5()
+    digests = []
+    with path.open("rb") as source:
+        while chunk := source.read(min(buffer_size, PART_BYTES - part_bytes)):
+            whole.update(chunk)
+            part.update(chunk)
+            count += len(chunk)
+            part_bytes += len(chunk)
+            if part_bytes == PART_BYTES:
+                digests.append(part.hexdigest())
+                part, part_bytes = hashlib.md5(), 0
+    if part_bytes:
+        digests.append(part.hexdigest())
+    return count, whole.hexdigest(), digests
 
 
 def upload_file(
@@ -84,25 +99,44 @@ def upload_file(
     path: Path,
     size: int,
     progress: Callable[[int], None],
+    md5: str | None = None,
+    client=None,
+    part_digests: list[str] | None = None,
+    buffer_size: int = 8 * MIB,
 ) -> None:
     """PUT files below 256 MiB; otherwise use 64-MiB-minimum logical parts."""
     bucket, key = _bucket_key(uri)
-    client = _client(properties)
+    owned_client = client is None
+    client = client or _client(properties)
     try:
-        client.head_object(Bucket=bucket, Key=key)
+        _upload(client, bucket, key, path, size, progress, md5, part_digests, buffer_size)
     except ClientError as error:
-        if error.response.get("ResponseMetadata", {}).get("HTTPStatusCode") != 404:
-            raise OSError("CrowDB S3 existence check failed") from None
-    else:
-        raise FileExistsError("Unique target data URI unexpectedly already exists")
+        if error.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 412:
+            raise FileExistsError("Unique target data URI unexpectedly already exists") from error
+        raise
+    finally:
+        if owned_client:
+            client.close()
 
+
+def _content_md5(digest: str) -> str:
+    return base64.b64encode(bytes.fromhex(digest)).decode("ascii")
+
+
+def _upload(client, bucket, key, path, size, progress, md5, part_digests, buffer_size):
     if size < MULTIPART_THRESHOLD:
         with path.open("rb") as source:
+            if md5 is None:
+                count, md5 = hash_stream(source, buffer_size)
+                if count != size:
+                    raise OSError("Local file changed size before upload")
+                source.seek(0)
             client.put_object(
                 Bucket=bucket,
                 Key=key,
                 Body=source,
                 ContentLength=size,
+                ContentMD5=_content_md5(md5),
                 IfNoneMatch="*",
             )
         progress(size)
@@ -118,6 +152,13 @@ def upload_file(
             while offset < size:
                 length = min(PART_BYTES, size - offset)
                 reader = _PartReader(source, length)
+                if part_digests is None:
+                    count, part_md5 = hash_stream(reader, buffer_size)
+                    if count != length:
+                        raise OSError("Local file changed size before multipart upload")
+                    reader.seek(0)
+                else:
+                    part_md5 = part_digests[len(parts)]
                 uploaded = client.upload_part(
                     Bucket=bucket,
                     Key=key,
@@ -125,6 +166,7 @@ def upload_file(
                     PartNumber=len(parts) + 1,
                     Body=reader,
                     ContentLength=length,
+                    ContentMD5=_content_md5(part_md5),
                 )
                 parts.append({"ETag": uploaded["ETag"], "PartNumber": len(parts) + 1})
                 offset += length

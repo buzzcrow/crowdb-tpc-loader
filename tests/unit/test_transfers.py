@@ -45,20 +45,13 @@ def test_exact_remote_bytes(make_data, byte_store):
     part = make_data()["region"].parts[0]
     table = SimpleNamespace(io=byte_store)
     uri = "s3://remote-bucket/unique.parquet"
+    original_input = byte_store.new_input
+    byte_store.new_input = lambda _uri: pytest.fail("upload must not read the remote object")
     digest = upload_part(table, part, uri, 7, lambda m: None)
-    assert digest == hashlib.sha256(part.path.read_bytes()).hexdigest()
+    byte_store.new_input = original_input
+    assert digest.md5 == hashlib.md5(part.path.read_bytes()).hexdigest()
     with byte_store.new_input(uri).open() as stream:
         assert stream.read() == part.path.read_bytes()
-
-
-def test_upload_does_not_read_remote_object(make_data, byte_store):
-    part = make_data()["region"].parts[0]
-
-    def unexpected_read(_uri):
-        raise AssertionError("upload must not read the accepted remote object")
-
-    byte_store.new_input = unexpected_read
-    upload_part(SimpleNamespace(io=byte_store), part, "s3://b/x.parquet", 7, lambda m: None)
 
 
 def test_failed_upload_close_is_not_success(make_data, byte_store):

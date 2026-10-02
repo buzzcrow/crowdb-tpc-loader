@@ -142,10 +142,6 @@ def fake_backend():
             self.calls.append("validate:" + table.name()[-1])
             assert all(uri.startswith("s3://") for uri in uris)
 
-        def assert_empty(self, table):
-            self.calls.append("empty:" + table.name()[-1])
-            return table
-
         def register(self, table, uris, run_id):
             name = table.name()[-1]
             self.calls.append("register:" + name)

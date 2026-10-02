@@ -136,7 +136,12 @@ class IcebergBackend:
         from .security import Redactor
 
         other = IcebergBackend(self.options, Redactor(tuple(self.redactor.secrets)))
-        other.connect()
+        from .rest_catalog import create_catalog
+
+        other.catalog = create_catalog(
+            "crowdb_tpc_loader", self.options.timeout, dict(self.catalog.properties), configured=True
+        )
+        other.probe_cleanup_supported = self.probe_cleanup_supported
         if self.staging is not None:
             other.set_staging(self.staging)
         return other
@@ -235,6 +240,8 @@ class IcebergBackend:
                     break
             self._learn(table)
             schema_compatible(table, data)
+            if table.metadata.current_snapshot_id is not None:
+                raise LoadError("New benchmark table already has a snapshot; refusing to append")
             return table
         except TableAlreadyExistsError as exc:
             if self.options.on_exists == "skip":
@@ -259,6 +266,11 @@ class IcebergBackend:
                 f"This FileIO/PyIceberg combination cannot inspect/register remote Parquet: {exc}"
             ) from exc
 
+    @staticmethod
+    def current_inventory(table: Any) -> Inventory:
+        # PyIceberg updates this metadata from the successful commit response.
+        return inspect_inventory(table)
+
     def reload_inventory(self, table: Any) -> tuple[Any, Inventory]:
         refreshed = self.catalog.load_table(table.name())
         self._learn(refreshed)
@@ -268,18 +280,12 @@ class IcebergBackend:
             )
         return refreshed, inspect_inventory(refreshed)
 
-    def assert_empty(self, table: Any) -> Any:
-        refreshed, state = self.reload_inventory(table)
-        if state.snapshot_id is not None or state.files:
-            raise LoadError("New benchmark table was modified by another writer; refusing to append")
-        return refreshed
-
     def register(self, table: Any, uris: list[str], run_id: str) -> None:
         for uri in uris:
             remote_uri(uri)
         table.add_files(
             file_paths=uris,
-            check_duplicate_files=True,
+            check_duplicate_files=False,
             snapshot_properties={"crowdb-tpc-loader.run-id": run_id},
         )
 

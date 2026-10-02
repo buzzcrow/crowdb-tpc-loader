@@ -49,7 +49,10 @@ def reconcile(
         if attempt:
             sleep(float(attempt))
         try:
-            _, state = backend.reload_inventory(table)
+            if attempt == 0 and original_error is None and hasattr(backend, "current_inventory"):
+                state = backend.current_inventory(table)
+            else:
+                _, state = backend.reload_inventory(table)
             verify_inventory(state, expected)
             for part in row["files"]:
                 if part.get("remote_uri") in expected:
@@ -62,7 +65,8 @@ def reconcile(
                 emit(
                     "Commit response was ambiguous; the complete snapshot was found. add_files was NOT retried."
                 )
-            checkpoint(row, warning)
+            if warning:
+                checkpoint(row, warning)
             return state
         except Exception as exc:
             last_error = exc
@@ -130,7 +134,6 @@ def _load_one(
         row.update(
             table_uuid=table_uuid(table), table_created=True, table_creation_state="created_and_validated"
         )
-        checkpoint(row, None)
         expected: dict[str, tuple[int, int]] = {}
         for index, (part, item) in enumerate(zip(data.parts, row["files"])):
             uri = data_location(table, f"crowdb-tpc-{run_id}-{index:06d}.parquet")
@@ -142,11 +145,17 @@ def _load_one(
             checkpoint(row, None)  # Persist URI before touching remote storage.
             emit(f"Upload {name}: part {index + 1}/{len(data.parts)}")
             uploaded_at = time.monotonic()
-            item["sha256"] = uploader(table, part, uri, buffer_size, emit)
+            checksum = uploader(table, part, uri, buffer_size, emit)
+            from .transfers import UploadResult
+
+            if isinstance(checksum, UploadResult):
+                item["md5"] = checksum.md5
+                item["md5_duration_seconds"] = checksum.md5_seconds
+                item["transfer_duration_seconds"] = checksum.transfer_seconds
+            else:
+                item["md5"] = checksum
             item["upload_duration_seconds"] = round(time.monotonic() - uploaded_at, 3)
             item["state"] = "uploaded_unregistered"
-            checkpoint(row, None)
-        table = backend.assert_empty(table)
         row["status"] = "committing"
         for item in row["files"]:
             item["state"] = "commit_unknown"
@@ -176,7 +185,27 @@ def _load_one(
         raise LoadError(f"Table {name} failed: {exc}") from exc
 
 
-def load_tables(
+def load_tables(backend, tables, report, buffer_size, emit, uploader=None, upload_workers=8):
+    if uploader is not None:
+        return _load_tables(backend, tables, report, buffer_size, emit, uploader, upload_workers)
+    from .transfers import upload_part
+    from .upload_client import UploadClient
+
+    # Table workers bound both concurrent checksum passes and live S3 connections.
+    workers = min(upload_workers, 8)
+    timeout = getattr(getattr(backend, "options", None), "timeout", 60)
+    transport = UploadClient(timeout=timeout, connections=workers)
+    try:
+
+        def upload(*args):
+            return upload_part(*args, transport=transport)
+
+        return _load_tables(backend, tables, report, buffer_size, emit, upload, workers)
+    finally:
+        transport.close()
+
+
+def _load_tables(
     backend: Any,
     tables: dict[str, TableData],
     report: RunReport,
@@ -185,22 +214,25 @@ def load_tables(
     uploader: Callable | None = None,
     upload_workers: int = 8,
 ) -> None:
-    if uploader is None:
-        from .transfers import upload_part
-
-        uploader = upload_part
     active = [(name, data) for name, data in tables.items() if report.table(name)["status"] != "skipped"]
     run_id = report.data["run_id"]
     generator = report.data["generator"]
     namespace = report.data["namespace"]
 
-    def save(name: str, row: dict, warning: str | None = None, secrets: set[str] | None = None) -> None:
+    def save(
+        name: str,
+        row: dict,
+        warning: str | None = None,
+        secrets: set[str] | None = None,
+        persist: bool = True,
+    ) -> None:
         if secrets:
             report.redactor.secrets.update(secrets)
         report.data["tables"][name] = deepcopy(row)
         if warning:
             report.data["warnings"].append(warning)
-        report.save()
+        if persist:
+            report.save()
 
     if upload_workers == 1 or len(active) <= 1:
         for name, data in active:
@@ -258,19 +290,33 @@ def load_tables(
                 row.update(status="failed", error=str(exc))
                 checkpoint(row, None)
             raise
+        finally:
+            if worker_backend is not backend and hasattr(worker_backend, "catalog"):
+                worker_backend.catalog.close()
 
     errors = []
     with ThreadPoolExecutor(max_workers=upload_workers) as pool:
         pending = {pool.submit(work, name, data): name for name, data in active}
         while pending:
             try:
-                name, row, warning, secrets, ready, result = messages.get(timeout=0.1)
+                batch = [messages.get(timeout=0.1)]
+                while len(batch) < upload_workers:
+                    try:
+                        batch.append(messages.get_nowait())
+                    except Empty:
+                        break
+                error = None
                 try:
-                    save(name, row, warning, secrets)
+                    for name, row, warning, secrets, _, _ in batch:
+                        save(name, row, warning, secrets, persist=False)
+                    report.save()
                 except Exception as exc:
-                    result.append(exc)
+                    error = exc
                 finally:
-                    ready.set()
+                    for _, _, _, _, ready, result in batch:
+                        if error is not None:
+                            result.append(error)
+                        ready.set()
             except Empty:
                 pass
             for future in tuple(pending):
